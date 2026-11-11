@@ -98,7 +98,7 @@ export class UI {
     el.style.transform = `translate(${g.x}px, ${g.y}px)`;
     el.classList.toggle('on', g.onScreen);
     (this.el.gArrow.firstElementChild as SVGElement).style.transform = `rotate(${g.onScreen ? Math.PI / 2 : g.angle}rad)`;
-    const t = `${g.label} · ${g.dist}m`;
+    const t = `${g.label} 방향`;
     if (this.el.gLabel.textContent !== t) this.el.gLabel.textContent = t;
   }
   fade(on: boolean) { this.el.fade.classList.toggle('on', on); }

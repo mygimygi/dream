@@ -751,24 +751,15 @@ export class Game {
     if (goal) m.push({ x: goal.x, z: goal.z, color: '#f07a50', kind: 'goal' });
   }
   /** Where the current objective physically is (for the on-screen guide arrow and minimap star). */
+  /** Coarse objective direction: points at the destination area, not at the exact object,
+   *  so players still explore. No guidance inside the cave (it is a straight run). */
   goal(area: 'island' | 'dungeon' = this.area): { x: number; z: number; y: number; label: string } | null {
-    const s = this.quest.stage();
-    const at = (x: number, z: number, label: string, y?: number) => ({ x, z, label, y: y ?? (x > 500 ? 0 : this.world.hf.height(x, z)) });
-    if (area === 'dungeon') {
-      const D = this.dungeon;
-      if (s >= 5 || this.quest.has('bossDead')) { const k = this.pickups.find((p) => p.big); return k ? at(k.pos.x, k.pos.z, '보상') : at(DX, 8.5, '출구'); }
-      if (!D.gateA.open) { const i = D.torchesA.torches.findIndex((t) => !t.lit); const t = D.torchesA.torches[i]; return at(t.position.x, t.position.z, '횃불'); }
-      if (!D.gateB.open) { const pl = D.plateB; return Math.hypot(this.player.pos.x - DX, this.player.pos.z + 20) < 10 ? at(pl.x, pl.z, '돌을 발판 위로') : at(DX, -20, '다음 방'); }
-      const key = this.chests.get('d_key')!;
-      if (!key.opened) return this.quest.has('keyChest') ? at(key.def.x, key.def.z, '열쇠 상자') : at(DX, -40, '나방 물리치기');
-      if (!D.doorC.open) return at(DX, -46.5, '잠긴 문');
-      return at(DX, -66, '보스');
-    }
-    switch (s) {
-      case 0: return at(-9, 17, '소라 할머니');
-      case 1: return at(17.5, 17, '검 상자');
-      case 2: return this.quest.has('ruinsOpen') ? at(56, 59, '등불 상자') : at(this.ruinsBlock.col.x, this.ruinsBlock.col.z, '무거운 돌');
-      case 3: case 4: return this.area === 'dungeon' ? null : at(L.CAVE.x, L.CAVE.z, '물빛 동굴');
+    if (area === 'dungeon') return null;
+    const at = (x: number, z: number, label: string) => ({ x, z, label, y: this.world.hf.height(x, z) });
+    switch (this.quest.stage()) {
+      case 0: case 1: return at(0, 22, '솔방울 마을');
+      case 2: return at(56, 50, '옛 등대 폐허');
+      case 3: case 4: return at(L.CAVE.x, L.CAVE.z, '물빛 동굴');
       case 5: return at(L.TEMPLE_POS.x, L.TEMPLE_POS.z, '달빛 사원');
       default: return null;
     }
@@ -778,8 +769,9 @@ export class Game {
     if (!g) { this.ui.guide(null); this.guideMesh.visible = false; return; }
     const P = this.player.pos;
     const dist = Math.hypot(g.x - P.x, g.z - P.z);
-    // 3D beacon over the goal
-    this.guideMesh.visible = dist > 2.5;
+    // once the player is in the destination area, stop guiding and let them look around
+    if (dist < 28) { this.ui.guide(null); this.guideMesh.visible = false; return; }
+    this.guideMesh.visible = false;
     this.guideMesh.position.set(g.x, g.y + 3.4 + Math.sin(this.time * 3) * 0.25, g.z);
     this.guideMesh.rotation.y = this.time * 2;
     // screen-space arrow
