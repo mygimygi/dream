@@ -276,7 +276,7 @@ export function pillar(h: number, broken: boolean, seed: number): THREE.Group {
   // moss
   const moss = gradient(blob(0.5, seed, 0.3, 1), 0x4f8f2e, 0x86c24a, -0.4, 0.4);
   parts.push(at(moss, 0.3, 0.45, 0.35, 0, 0, 0, [1.2, 0.35, 0.8]));
-  g.add(mesh(merge(parts), MAT.vcDetail));
+  g.add(mesh(merge(parts), MAT.vcDetailOcc)); // fades like roofs when it hides the hero
   g.rotation.y = r() * Math.PI;
   return g;
 }
@@ -389,12 +389,15 @@ export function temple(): THREE.Group {
     if (Math.abs(Math.sin(a) - 1) < 0.05) continue;
     const p = pillar(4.2, false, 300 + i); p.position.set(Math.cos(a) * 5.2, 1.0, Math.sin(a) * 5.2); g.add(p);
   }
+  // roof parts live in their own group so the game can lift them away while the hero is inside
+  const roof = new THREE.Group(); roof.name = 'templeRoof';
   const ring = gradient(at(new THREE.TorusGeometry(5.2, 0.55, 10, 40), 0, 6.1, 0, Math.PI / 2, 0, 0), 0xcfc4ac, 0xece3cd, 5.6, 6.6);
-  g.add(mesh(ring, MAT.vcOcc));
+  roof.add(mesh(ring, MAT.vcOcc));
   const dome = lathe([[5.4, 6.4], [5.0, 7.6], [3.9, 8.8], [2.2, 9.6], [0.6, 9.85], [0, 9.9]], 40);
   gradient(dome, 0x5f8fc8, 0x9fd0f0, 6.4, 9.9);
-  g.add(mesh(dome, MAT.vcOcc));
-  g.add(mesh(colorize(at(sphere(0.45, 16, 12), 0, 10.2, 0), 0xf3d36a), MAT.metal));
+  roof.add(mesh(dome, MAT.vcOcc));
+  roof.add(mesh(colorize(at(sphere(0.45, 16, 12), 0, 10.2, 0), 0xf3d36a), MAT.metal));
+  g.add(roof);
   const ped = gradient(lathe([[0, 0], [0.9, 0], [0.7, 0.3], [0.5, 1.1], [0.75, 1.3], [0, 1.35]], 20), 0xa49a85, 0xe2d8c2, 0, 1.35);
   g.add(mesh(at(ped, 0, 1.2, 0), MAT.vcDetail));
   return g;

@@ -31,6 +31,7 @@ export class World {
   private critters: { obj: THREE.Object3D; kind: 'butterfly' | 'gull'; t: number; c: THREE.Vector3; r: number; s: number; wings: THREE.Object3D[] }[] = [];
   water: THREE.Mesh;
   signs: { x: number; z: number; text: string }[] = [];
+  templeRoof!: THREE.Object3D; private roofK = 1;
 
   constructor(scene: THREE.Scene, q: QualityProfile) {
     this.scene = scene;
@@ -138,6 +139,7 @@ export class World {
     // ---------- temple on the summit ----------
     const tp = L.TEMPLE_POS;
     const tmp = P.temple(); place(tmp, tp.x, tp.z, 0, -0.1);
+    this.templeRoof = tmp.getObjectByName('templeRoof')!;
     const ty = H(tp.x, tp.z);
     this.col.box(tp.x, tp.z, 7.5, 7.5, 0, ty - 5, ty + 1.15, { walkTop: true });
     // steps up onto the platform on the south side
@@ -229,6 +231,11 @@ export class World {
     this.sun.position.set(fx + d.x * 70, focus.y + d.y * 70, fz + d.z * 70);
     this.sun.target.position.set(fx, focus.y, fz);
     this.veg.updateLOD(focus);
+    // lift the temple roof away while the hero stands inside the colonnade
+    const inside = Math.hypot(focus.x - L.TEMPLE_POS.x, focus.z - L.TEMPLE_POS.z) < 7;
+    this.roofK += ((inside ? 0 : 1) - this.roofK) * (1 - Math.exp(-dt * 6));
+    this.templeRoof.position.y = (1 - this.roofK) * 9;
+    this.templeRoof.visible = this.roofK > 0.04;
     this.clouds.children.forEach((c, i) => { c.position.x += dt * (0.8 + (i % 3) * 0.3); if (c.position.x > 240) c.position.x = -240; });
     for (const t of this.torches) if (t.lit) { const f = 1 + Math.sin(time * 18 + t.position.x) * 0.06 + Math.sin(time * 7.3) * 0.05; t.flame.scale.set(0.8 * f, 1.05 / f, 1); }
     for (const c of this.critters) {
