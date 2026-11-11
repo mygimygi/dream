@@ -1,0 +1,6 @@
+import { defineConfig } from 'vite';
+export default defineConfig({
+  base: './',
+  build: { target: 'es2020', chunkSizeWarningLimit: 2000, assetsInlineLimit: 100000000, cssCodeSplit: false,
+    rollupOptions: { output: { inlineDynamicImports: true } } },
+});
