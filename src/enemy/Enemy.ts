@@ -2,10 +2,11 @@ import * as THREE from 'three';
 import { acornBeetle, conchKing, CreatureModel, exclaim, hermitCrab, lanternMoth, shroomling } from './EnemyModels';
 import { angleDiff, clamp, damp, dampAngle } from '../core/math';
 import { events } from '../core/Events';
+import { bossArrow, bossBomb, bossUpdate, bossVulnerable, guardianModel, kingCrabModel, stormModel } from './Bosses';
 import { blobShadow } from '../render/BlobShadow';
 import { CollisionWorld } from '../world/Collision';
 
-export type EnemyType = 'acorn' | 'shroom' | 'crab' | 'moth' | 'boss';
+export type EnemyType = 'acorn' | 'shroom' | 'crab' | 'moth' | 'boss' | 'guardian' | 'kingCrab' | 'storm';
 interface Stats { hp: number; speed: number; dmg: number; sight: number; model: () => CreatureModel; drop: number; }
 const STATS: Record<EnemyType, Stats> = {
   acorn: { hp: 3, speed: 2.2, dmg: 1, sight: 10, model: acornBeetle, drop: 0.6 },
@@ -13,6 +14,9 @@ const STATS: Record<EnemyType, Stats> = {
   crab: { hp: 4, speed: 3.0, dmg: 2, sight: 9, model: hermitCrab, drop: 0.7 },
   moth: { hp: 1, speed: 3.4, dmg: 1, sight: 12, model: lanternMoth, drop: 0.5 },
   boss: { hp: 26, speed: 2.4, dmg: 2, sight: 40, model: conchKing, drop: 0 },
+  guardian: { hp: 20, speed: 2, dmg: 2, sight: 30, model: guardianModel, drop: 0 },
+  kingCrab: { hp: 22, speed: 3, dmg: 2, sight: 30, model: kingCrabModel, drop: 0 },
+  storm: { hp: 24, speed: 3, dmg: 2, sight: 40, model: stormModel, drop: 0 },
 };
 export interface EnemyEnv { groundAt(x: number, z: number, maxY?: number): number; col: CollisionWorld; playerPos: THREE.Vector3; playerAlive: () => boolean; }
 
@@ -37,7 +41,7 @@ export class Enemy {
     this.hpCanvas = document.createElement('canvas'); this.hpCanvas.width = 128; this.hpCanvas.height = 20;
     const tex = new THREE.CanvasTexture(this.hpCanvas);
     this.hpBar = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
-    this.hpBar.scale.set(type === 'boss' ? 0 : 1.1, 0.17, 1); this.hpBar.position.y = this.m.height + 0.25; this.hpBar.visible = false; this.hpBar.renderOrder = 11;
+    this.hpBar.scale.set(this.isBoss ? 0 : 1.1, 0.17, 1); this.hpBar.position.y = this.m.height + 0.25; this.hpBar.visible = false; this.hpBar.renderOrder = 11;
     this.m.root.add(this.hpBar);
     this.pickWander();
   }
@@ -49,19 +53,23 @@ export class Enemy {
     (this.hpBar.material as THREE.SpriteMaterial).map!.needsUpdate = true;
   }
   private pickWander() { const a = Math.random() * 6.28, d = Math.random() * 5; this.wander.set(this.home.x + Math.cos(a) * d, 0, this.home.z + Math.sin(a) * d); }
-  private set(s: string) { this.state = s; this.stateT = 0; }
+  set(s: string) { this.state = s; this.stateT = 0; }
+  get isBoss() { return this.type === 'boss' || this.type === 'guardian' || this.type === 'kingCrab' || this.type === 'storm'; }
+  bombHit = () => bossBomb(this) || (this.damage(2, this.pos.clone().add(new THREE.Vector3(0, 0, 1)), 10), true);
+  arrowHit = () => bossArrow(this);
 
   damage(dmg: number, from: THREE.Vector3, force = 7) {
     if (this.dead) return;
     if (this.type === 'boss' && this.state === 'roll') { events.emit('sfx', 'clank'); this.knock.set(0, 0, 0); return; }
+    if (this.isBoss && this.type !== 'boss' && !bossVulnerable(this)) { events.emit('sfx', 'clank'); return; }
     if (this.dizzy > 0) dmg *= 2;
     this.hp -= dmg; this.flash = 0.18;
     const d = new THREE.Vector3().subVectors(this.pos, from).setY(0).normalize();
-    this.knock.copy(d).multiplyScalar(this.type === 'boss' ? force * 0.15 : force);
-    if (this.type !== 'boss') { this.vy = 3; this.set('hurt'); }
-    this.hpBar.visible = this.type !== 'boss'; this.drawHp();
+    this.knock.copy(d).multiplyScalar(this.isBoss ? force * 0.15 : force);
+    if (!this.isBoss) { this.vy = 3; this.set('hurt'); }
+    this.hpBar.visible = !this.isBoss; this.drawHp();
     events.emit('enemyHit', this);
-    if (this.hp <= 0) { this.dead = true; this.deadT = 0; events.emit('sfx', this.type === 'boss' ? 'bossDie' : 'enemyDie'); this.onDeath?.(this); }
+    if (this.hp <= 0) { this.dead = true; this.deadT = 0; events.emit('sfx', this.isBoss ? 'bossDie' : 'enemyDie'); this.onDeath?.(this); }
     else events.emit('sfx', 'creature');
   }
 
@@ -159,6 +167,7 @@ export class Enemy {
         break;
       }
       case 'boss': this.bossAI(dt, toP, dist, faceP); return;
+      case 'guardian': case 'kingCrab': case 'storm': bossUpdate(this, dt, toP, dist, faceP); if (this.alert > 0) this.alert = 0; return;
     }
     if (this.alert > 0) { this.alert -= dt; this.ex.visible = this.alert > 0; this.ex.position.y = this.m.height + 0.5 + Math.sin((0.6 - this.alert) * 20) * 0.05; }
 
@@ -237,14 +246,15 @@ export class Enemy {
     this.hpBar.position.y = this.m.height + 0.25;
   }
 
-  shoot(dir: THREE.Vector3, kind: 'spore' | 'spike', speed = 7) {
+  shoot(dir: THREE.Vector3, kind: 'spore' | 'spike' | 'spark', speed = 7) {
     const d = dir.clone().setY(0).normalize();
     const mat = kind === 'spore'
       ? new THREE.MeshStandardMaterial({ color: 0xc8a0ff, emissive: 0x8a50ff, emissiveIntensity: 1.2, roughness: 0.4 })
+      : kind === 'spark' ? new THREE.MeshStandardMaterial({ color: 0xe8e0ff, emissive: 0x9a7aff, emissiveIntensity: 2.2, roughness: 0.2 })
       : new THREE.MeshStandardMaterial({ color: 0xffd0e0, emissive: 0xff6a8a, emissiveIntensity: 1.0, roughness: 0.3 });
-    const geo = kind === 'spore' ? new THREE.IcosahedronGeometry(0.22, 2) : new THREE.ConeGeometry(0.16, 0.6, 8).rotateX(Math.PI / 2);
+    const geo = kind === 'spark' ? new THREE.IcosahedronGeometry(0.3, 1) : kind === 'spore' ? new THREE.IcosahedronGeometry(0.22, 2) : new THREE.ConeGeometry(0.16, 0.6, 8).rotateX(Math.PI / 2);
     const mesh = new THREE.Mesh(geo, mat); mesh.castShadow = true;
-    const h = kind === 'spore' ? 0.9 : 1.0;
+    const h = kind === 'spore' ? 0.9 : kind === 'spark' ? 1.1 : this.type === 'kingCrab' ? 0.6 : 1.0;
     mesh.position.set(this.pos.x + d.x * this.radius, this.pos.y + h, this.pos.z + d.z * this.radius);
     mesh.lookAt(mesh.position.clone().add(d));
     this.scene.add(mesh);
@@ -330,6 +340,7 @@ export class Enemy {
   touching(p: THREE.Vector3) {
     if (this.dead) return false;
     if (this.type === 'boss' && this.state === 'stun') return false;
+    if ((this.type === 'guardian' && this.state === 'stun') || (this.type === 'storm' && this.state !== 'fallen') || (this.type === 'kingCrab' && this.state === 'exposed')) return false;
     const dy = p.y - this.pos.y;
     const h = this.type === 'moth' ? [0.6, 2.4] : [-0.5, this.m.height];
     if (dy < h[0] - 1 || dy > h[1]) return false;

@@ -3,9 +3,10 @@ import { RenderSystem } from '../render/Renderer';
 import { U, TOY } from '../render/Materials';
 import { Particles } from '../render/Particles';
 import { World, ChestEnt } from '../world/World';
-import { REGION_NAMES, Region } from '../world/Heightfield';
+import { REGION_NAMES, Region, WORLD_HALF } from '../world/Heightfield';
 import * as L from '../world/Layout';
 import { chest as chestModel } from '../world/Props';
+import * as PropsMod from '../world/Props';
 import { CameraRig } from '../camera/CameraRig';
 import { Player } from '../character/Player';
 import { NPC } from '../character/NPC';
@@ -17,13 +18,27 @@ import { clamp, damp, angleDiff } from './math';
 import { Inventory } from '../inventory/Inventory';
 import { Quest } from '../quest/Quest';
 import { ITEMS, itemModel, renderIcons } from '../item/Items';
-import { UI } from '../ui/UI';
+import { UIExt } from '../ui/UIExt';
+import { TimeWeather } from '../systems/TimeWeather';
+import { QuestManager } from '../systems/Quests';
+import { Codex } from '../systems/Codex';
+import { Exploration } from '../systems/Exploration';
+import { Tools } from '../systems/Tools';
+import { Fishing } from '../systems/Fishing';
+import { Cooking } from '../systems/Cooking';
+import { Minigames } from '../systems/Minigames';
+import { Mount } from '../systems/Mount';
+import { NPCLife } from '../systems/NPCLife';
+import { buildArenas } from '../systems/Arenas';
+import { GROVE, SKY } from '../data/places';
+import { SECRET_PLACES } from '../systems/Codex';
 import { Minimap } from '../ui/Minimap';
 import { AudioSystem } from '../audio/Audio';
 import { Save, SaveData, Settings } from '../save/Save';
 import { TouchControls } from '../mobile/TouchControls';
 import { Dungeon, DUNGEON_ENTRY, DX, ROOMS } from '../dungeon/Dungeon';
 import { Gate, Plate, PushBlock } from '../puzzle/Puzzles';
+import * as PlacesMod from '../data/places';
 import { Fullscreen } from '../mobile/Fullscreen';
 import { HERO_LOOK, HumanoidLook } from '../character/Humanoid';
 
@@ -53,11 +68,16 @@ export class Game {
   scene = new THREE.Scene();
   cam = new THREE.PerspectiveCamera(25, innerWidth / innerHeight, 0.3, 900);
   rs: RenderSystem; world: World; rig: CameraRig; input: Input; player: Player; inv = new Inventory(); quest: Quest;
-  ui = new UI(); audio = new AudioSystem(); particles: Particles; minimap: Minimap; touch: TouchControls; dungeon: Dungeon;
+  ui = new UIExt(); audio = new AudioSystem(); particles: Particles; minimap: Minimap; touch: TouchControls; dungeon: Dungeon;
   npcs: NPC[] = []; enemies: Enemy[] = []; shots: Projectile[] = []; pickups: Pickup[] = [];
   chests = new Map<string, ChestEnt>();
   ruinsBlock: PushBlock; ruinsPlate: Plate; ruinsGate: Gate;
-  mode: Mode = 'title'; time = 0; playTime = 0; hitstop = 0; area: 'island' | 'dungeon' = 'island';
+  mode: Mode = 'title'; time = 0; playTime = 0; hitstop = 0; area: 'island' | 'dungeon' | 'grove' | 'sky' = 'island';
+  events = events;
+  time_!: TimeWeather; qm!: QuestManager; codex = new Codex(); explore!: Exploration; tools!: Tools; fishing!: Fishing; cooking!: Cooking;
+  minigames!: Minigames; mount!: Mount; life!: NPCLife; relations: Record<string, number> = {};
+  arenas!: ReturnType<typeof buildArenas>; discovered = new Uint8Array(64 * 64); private markers: THREE.Sprite[] = [];
+  private nightMoths: Enemy[] = []; private finalBoss: Enemy | null = null; private arenaBoss: Enemy | null = null;
   settings: Settings; qLevel: QualityLevel;
   private region: Region | '' = ''; private lastFrame = performance.now(); private fpsAcc: number[] = []; private autoChecked = false;
   private itemGetT = 0; private pendingItem: { id: string; count: number } | null = null; private deadT = 0;
@@ -113,7 +133,7 @@ export class Game {
     // NPCs
     for (const n of L.NPCS) {
       const npc = new NPC(this.scene, n.id, n.name, n.x, n.z, this.world.hf.height(n.x, n.z));
-      this.npcs.push(npc); this.world.col.circle(n.x, n.z, 0.45, -5, 5);
+      this.npcs.push(npc); npc.collider = this.world.col.add({ kind: 'circle', x: n.x, z: n.z, r: 0.45, hx: 0.45, hz: 0.45, rot: 0, y0: -5, y1: 5, solid: true, walkTop: false, active: true }, true);
     }
     // ruins puzzle
     const P = L.RUINS_PUZZLE;
@@ -121,6 +141,14 @@ export class Game {
     this.ruinsPlate = new Plate(this.scene, P.plate.x, P.plate.z, this.world.hf.height(P.plate.x, P.plate.z));
     this.ruinsGate = new Gate(this.scene, this.world.col, P.gate.x, P.gate.z, this.world.hf.height(P.gate.x, P.gate.z) - 0.2, P.gate.yaw, 3.6);
     this.world.onSign = (text) => this.say([{ who: '', text: text.replace(/\n/g, ' · ') }]);
+    (this.world as any).glassMat = (this.world.scene.getObjectByName('props') ? undefined : undefined);
+    { const { MAT } = PropsMod; (this.world as any).glassMat = MAT.glass; }
+    this.time_ = new TimeWeather(this); this.qm = new QuestManager(this);
+    this.explore = new Exploration(this); this.tools = new Tools(this); this.fishing = new Fishing(this); this.cooking = new Cooking(this);
+    this.minigames = new Minigames(this); this.mount = new Mount(this); this.life = new NPCLife(this);
+    this.arenas = buildArenas(this.scene, this.world.col);
+    this.codex.where = () => this.area === 'island' ? REGION_NAMES[this.world.hf.regionAt(this.player.pos.x, this.player.pos.z)] : this.area === 'dungeon' ? '물빛 동굴' : this.area === 'grove' ? SECRET_PLACES.grove : SECRET_PLACES.skyIsle;
+    for (const n of this.npcs) { const sp = this.markerSprite(); n.rig.root.add(sp); sp.position.y = 2.15; this.markers.push(sp); }
     this.wireEvents();
     this.wireUI();
     const onResize = () => { this.rs.resize(); this.particles.setScale(innerHeight); };
@@ -141,6 +169,11 @@ export class Game {
   // ------------------------------------------------------------------ events
   private wireEvents() {
     events.on('sfx', (n) => this.audio.play(n));
+    events.on('toast', (t) => this.ui.toast(t));
+    events.on('questsChanged', () => this.updateMarkers());
+    events.on('summon', (s) => { const e = this.spawn(s.type, s.x, s.z); this.particles.poof(e.pos.clone().setY(e.pos.y + 1)); });
+    events.on('codexNew', ({ cat, id }) => { if (cat === 'places') return; const name = cat === 'monsters' ? '몬스터' : cat === 'fish' ? '물고기' : '도감'; this.ui.toast(`📖 ${name} 도감에 새로 기록됐어요`); void id; });
+    events.on('inventory', () => { for (const id of this.inv.list()) this.codex.seeItem(id); });
     events.on('step', (p) => { this.audio.play('step', { water: p.water }); if (p.water) this.particles.splash(p.pos.clone().setY(p.pos.y + 0.1)); else if (Math.random() < 0.4) this.particles.dust(p.pos.clone().setY(p.pos.y + 0.05), 2); });
     events.on('dust', (p) => this.particles.dust(p.clone().setY(p.y + 0.1), 10));
     events.on('splash', (p) => { this.particles.splash(p); this.audio.play('splash'); });
@@ -170,6 +203,10 @@ export class Game {
         case 'close': ui.closePanel(); break;
         case 'pause': if (this.mode !== 'title') ui.pause(); break;
         case 'inventory': if (this.mode !== 'title') this.openInventory(); break;
+        case 'map': if (this.mode !== 'title') this.openMap(); break;
+        case 'quests': this.ui.questLog(this.qm); break;
+        case 'codex': this.ui.codexView(this.codex, 'fish', this.fishing.records); break;
+        case 'recipes': this.ui.recipes(this.cooking.known); break;
         case 'save': this.save(); ui.toast('저장했어요'); ui.closePanel(); break;
         case 'toTitle': ui.closePanel(); this.save(); this.toTitle(); break;
         case 'free': this.mode = 'play'; break;
@@ -184,12 +221,15 @@ export class Game {
     };
     ui.onEquip = (id) => this.inv.equip(id);
     ui.onUse = (id) => this.useItem(id);
+    ui.onMapTeleport = (i) => this.teleportOwl(i);
   }
-  private openInventory() {
+  openInventory() {
     const t = Math.floor(this.playTime);
-    this.ui.inventory(this.inv, { shells: this.inv.count('shell'), stars: this.inv.count('starShard'), time: `${Math.floor(t / 60)}분 ${t % 60}초`, hp: this.player.hp, max: this.player.maxHp });
+    this.ui.inventory2(this.inv, { shells: this.inv.count('shell'), time: `${Math.floor(t / 60)}분 ${t % 60}초`, hp: this.player.hp, max: this.player.maxHp },
+      (id, act) => { if (act === 'equip') this.inv.equip(id); else this.useItem(id); });
   }
   private useItem(id: string) {
+    if ((ITEMS[id]?.kind as string) === 'food') { this.cooking.eat(id); this.particles.sparkle(this.player.pos.clone().setY(this.player.pos.y + 1.2), 0xff9ab0); return; }
     if (id === 'berry') {
       if (this.player.hp >= this.player.maxHp) { this.ui.toast('체력이 이미 가득해요'); return; }
       this.inv.take('berry'); this.player.heal(6); this.audio.play('heal'); this.particles.sparkle(this.player.pos.clone().setY(this.player.pos.y + 1.2), 0xff9ab0);
@@ -256,6 +296,7 @@ export class Game {
     this.ui.hideCreator();
     this.quest.name = this.playerName; this.quest.gender = this.appearance.gender;
     this.inv.load({}); this.quest.load([]); this.playTime = 0;
+    this.loadV2(null);
     for (const c of this.chests.values()) this.resetChest(c, false);
     this.world.veg.restoreBushes(null);
     for (const p of this.world.pots) { p.alive = true; p.obj.visible = true; p.collider.active = true; }
@@ -274,6 +315,7 @@ export class Game {
     this.appearance = { ...DEFAULT_APPEARANCE, ...(d.appearance ?? {}) }; this.playerName = d.name ?? '미루'; this.quest.name = this.playerName; this.quest.gender = this.appearance.gender;
     this.inv.load(d.inventory); this.player.setLook(lookFrom(this.appearance));
     this.inv.load(d.inventory); this.quest.load(d.flags); this.playTime = d.playTime ?? 0;
+    this.loadV2(d);
     for (const c of this.chests.values()) this.resetChest(c, d.chests.includes(c.def.id));
     this.world.veg.restoreBushes(d.bushes ?? []);
     for (const p of this.world.pots) { const broken = d.pots?.includes(p.id); p.alive = !broken; p.obj.visible = !broken; p.collider.active = !broken; }
@@ -296,17 +338,30 @@ export class Game {
     this.beginPlay();
     this.ui.toast('이어서 모험을 시작해요');
   }
+  /** v2 fields (missing in v1 saves -> sensible defaults; main-quest progress migrated from v1 flags) */
+  private loadV2(d: SaveData | null) {
+    const v2 = (d as any)?.v2 ?? {};
+    // v1 'ending' meant "pearl placed" in the old story: migrate to the new chapter flag
+    if (d && !v2.quests && this.quest.has('ending')) { this.quest.flags.delete('ending'); this.quest.set('pearlPlaced'); }
+    this.codex.load(v2.codex); this.explore.load(v2.explore); this.fishing.load(v2.fishing); this.cooking.load(v2.cooking); this.minigames.load(v2.minigames);
+    this.time_.load(v2.time); this.relations = v2.relations ?? {}; this.mount.load(v2.mount);
+    this.discovered.fill(0); if (typeof v2.discovered === 'string') for (let i = 0; i < Math.min(4096, v2.discovered.length); i++) this.discovered[i] = v2.discovered[i] === '1' ? 1 : 0;
+    this.qm.load(v2.quests, (f) => this.quest.has(f), (i) => this.inv.has(i) || (i === 'lantern' && this.quest.has('enteredCave')));
+    for (const id of this.inv.list()) this.codex.seeItem(id);
+  }
   save() {
     if (this.mode === 'title') return;
     const p = this.player.pos;
     const D = this.dungeon;
     const d: SaveData = {
-      v: 1, time: Date.now(), pos: [p.x, p.y, p.z], yaw: this.player.yaw, area: this.area, hp: this.player.hp,
+      v: 2, time: Date.now(), pos: [p.x, p.y, p.z], yaw: this.player.yaw, area: this.area, hp: this.player.hp,
       inventory: this.inv.toJSON(), flags: this.quest.toJSON(), appearance: this.appearance, name: this.playerName, chests: [...this.chests.values()].filter((c) => c.opened).map((c) => c.def.id),
       bushes: this.world.veg.bushes.filter((b) => !b.alive).map((b) => b.index), pots: this.world.pots.filter((x) => !x.alive).map((x) => x.id),
       dungeon: { torches: D.torchesA.torches.map((t) => t.lit), block: [D.blockB.col.x, D.blockB.col.z], doorC: D.doorC.open, bossDead: this.quest.has('bossDead'), keyChest: this.quest.has('keyChest') },
       playTime: this.playTime,
-    };
+      v2: { quests: this.qm.toJSON(), codex: this.codex.toJSON(), explore: this.explore.toJSON(), fishing: this.fishing.toJSON(), cooking: this.cooking.toJSON(), minigames: this.minigames.toJSON(),
+        time: this.time_.toJSON(), mount: this.mount.toJSON(), relations: this.relations, discovered: Array.from(this.discovered).join('') },
+    } as unknown as SaveData;
     Save.write(d);
   }
   private resetChest(c: ChestEnt, opened: boolean) {
@@ -322,8 +377,11 @@ export class Game {
   private respawn() {
     this.player.hp = this.player.maxHp; this.player.inv = 1.5;
     this.clearEnemies();
-    if (this.area === 'dungeon') { this.player.place(DUNGEON_ENTRY.x, DUNGEON_ENTRY.z, DUNGEON_ENTRY.yaw); this.spawnDungeon(); }
-    else { this.player.place(L.START.x, L.START.z, L.START.yaw); this.spawnIsland(); }
+    if (this.area === 'dungeon') this.player.place(DUNGEON_ENTRY.x, DUNGEON_ENTRY.z, DUNGEON_ENTRY.yaw);
+    else if (this.area === 'grove') this.player.place(GROVE.x, GROVE.z + 11, Math.PI);
+    else if (this.area === 'sky') this.player.place(SKY.x, SKY.z + 11, Math.PI);
+    else this.player.place(L.START.x, L.START.z, L.START.yaw);
+    this.spawnArea(this.area);
     this.rig.snap(this.player.pos);
     this.mode = 'play'; this.ui.hearts(this.player.hp, this.player.maxHp);
   }
@@ -333,12 +391,71 @@ export class Game {
   private env() { return { groundAt: (x: number, z: number, m?: number) => this.groundAt(x, z, m), col: this.world.col, playerPos: this.player.pos, playerAlive: () => this.player.action !== 'dead' && this.mode === 'play' }; }
   private spawn(type: EnemyType, x: number, z: number) { const e = new Enemy(type, x, z, this.scene, this.env(), this.shots); e.onDeath = (en) => this.onEnemyDeath(en); this.enemies.push(e); return e; }
   private spawnIsland() { for (const s of L.ENEMY_SPAWNS) this.spawn(s.type as EnemyType, s.x, s.z); }
+  spawnEnemy(type: EnemyType, x: number, z: number) { return this.spawn(type, x, z); }
+  private spawnArea(a: string) {
+    this.arenaBoss = null; this.finalBoss = null; this.nightMoths = [];
+    if (a === 'dungeon') this.spawnDungeon();
+    else if (a === 'island') this.spawnIsland();
+    else if (a === 'grove') { this.codex.see('places', 'grove'); if (!this.quest.has('guardianDead')) { const e = this.spawn('guardian', GROVE.x, GROVE.z - 6); e.yaw = 0; this.arenaBoss = e; } }
+    else if (a === 'sky') { this.codex.see('places', 'skyIsle'); if (!this.quest.has('finalBossDead')) { const e = this.spawn('storm', SKY.x, SKY.z - 5); this.finalBoss = e; this.arenaBoss = e; } }
+  }
+  dropPickup(id: string, pos: THREE.Vector3, n = 1) { this.dropItem(id, pos, n); }
+  itemName(id: string) { return ITEMS[id]?.name ?? id; }
+  useLantern() { this.useTool_lantern(); }
+  onNewDay() { this.explore.newDay(this.time_.day); this.ui.toast(`${this.time_.day}일째 아침이 밝았어요`); }
+  onPeriodChange(p: string) {
+    if (this.area !== 'island') return;
+    if (p === 'night') { for (let i = 0; i < 4; i++) { const a = i * 1.6; const e = this.spawn('moth', 20 * Math.cos(a) - 10, 30 * Math.sin(a) + 10); this.nightMoths.push(e); } this.ui.toast('밤이 되었어요. 등불나방이 날아다녀요'); }
+    if (p === 'morning') { for (const e of this.nightMoths) if (!e.dead) { e.dispose(); this.enemies = this.enemies.filter((x) => x !== e); } this.nightMoths = []; }
+  }
+  private markerSprite() {
+    const c = document.createElement('canvas'); c.width = 64; c.height = 64;
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false })); sp.scale.set(0.55, 0.55, 1); sp.renderOrder = 12; sp.visible = false;
+    (sp as any).draw = (ch: string) => { const x = c.getContext('2d')!; x.clearRect(0, 0, 64, 64); if (!ch) { sp.visible = false; return; } sp.visible = true; x.fillStyle = ch === '!' ? '#f2c14c' : '#6ad86a'; x.strokeStyle = '#4a3424'; x.lineWidth = 6; x.beginPath(); x.arc(32, 32, 27, 0, Math.PI * 2); x.fill(); x.stroke(); x.fillStyle = '#4a3424'; x.font = 'bold 40px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(ch, 32, 35); t.needsUpdate = true; };
+    return sp;
+  }
+  openMap() {
+    const owlNames = ['사원 길 서쪽', '사원 길 동쪽', '폐허 입구', '호수 남쪽 언덕', '동굴 갈림길'];
+    this.ui.map({
+      draw: (cv) => this.drawBigMap(cv),
+      owls: L.STATUES.map((_, i) => ({ i, name: owlNames[i] ?? `석상 ${i + 1}`, active: this.explore.owls.has(i) })),
+      legend: '● 나 · ★ 메인 목표 · ◆ 상자 · ✕ 판 보물 · 🦉 석상(누르면 이동) · 🎣 낚시터 · 🍲 요리 냄비 · ⚑ 미니게임 · 흐린 곳은 아직 가 보지 않은 지역',
+    });
+  }
+  private teleportOwl(i: number) {
+    if (this.area !== 'island') { this.ui.toast('섬 위에서만 빠르게 이동할 수 있어요'); return; }
+    const s = L.STATUES[i]; this.ui.closePanel();
+    this.transitionTo('island', s[0] + 2, s[1] + 2, Math.PI);
+  }
+  private drawBigMap(cv: HTMLCanvasElement) {
+    const x = cv.getContext('2d')!, S = cv.width, k = S / (WORLD_HALF * 2);
+    const W2 = (wx: number) => (wx + WORLD_HALF) * k;
+    x.fillStyle = '#3d8fb0'; x.fillRect(0, 0, S, S);
+    x.drawImage((this.minimap as any).base, 0, 0, S, S);
+    // fog of war over unexplored cells
+    x.fillStyle = 'rgba(240,232,214,0.82)';
+    const cs = S / 64;
+    for (let j = 0; j < 64; j++) for (let i = 0; i < 64; i++) if (!this.discovered[j * 64 + i]) x.fillRect(i * cs - 0.5, j * cs - 0.5, cs + 1, cs + 1);
+    const seen = (wx: number, wz: number) => this.discovered[Math.floor((wz + WORLD_HALF) / (WORLD_HALF * 2) * 64) * 64 + Math.floor((wx + WORLD_HALF) / (WORLD_HALF * 2) * 64)];
+    const mark = (wx: number, wz: number, t: string, col = '#4a3424', size = 16) => { if (!seen(wx, wz)) return; x.font = `${size}px sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = col; x.fillText(t, W2(wx), W2(wz)); };
+    for (const c of this.chests.values()) if (!c.def.dungeon) mark(c.def.x, c.def.z, c.opened ? '◇' : '◆', '#c8901c');
+    for (const d of (PlacesMod.DIG_SPOTS)) if (this.explore.dug.has(d.id)) mark(d.x, d.z, '✕', '#c0392b');
+    L.STATUES.forEach((s, i) => mark(s[0], s[1], '🦉', this.explore.owls.has(i) ? '#2f9e94' : '#888'));
+    for (const p of PlacesMod.POTS_COOK) mark(p.x, p.z, '🍲');
+    for (const p of [[2, 80], [44, -8], [-88, 0]]) mark(p[0], p[1], '🎣');
+    for (const p of [PlacesMod.ARCHERY.sign, PlacesMod.RACE.sign, PlacesMod.ARENA.sign]) mark(p.x, p.z, '⚑', '#2f6a9e');
+    mark(L.CAVE.x, L.CAVE.z, '⛰', '#4a3424', 18); mark(L.TEMPLE_POS.x, L.TEMPLE_POS.z, '⛩', '#4a3424', 18);
+    for (const n of this.npcs) if (!n.hidden) mark(n.pos.x, n.pos.z, '●', '#ffffff', 12);
+    const g = this.goal('island'); if (g) { x.font = 'bold 22px sans-serif'; x.fillStyle = '#f07a50'; x.fillText('★', W2(g.x), W2(g.z)); }
+    if (this.area === 'island') { const P = this.player.pos; x.fillStyle = '#f07a50'; x.strokeStyle = '#fff'; x.lineWidth = 3; x.beginPath(); x.arc(W2(P.x), W2(P.z), 7, 0, Math.PI * 2); x.fill(); x.stroke(); }
+  }
   private spawnDungeon() {
     if (!this.quest.has('roomB')) { this.spawn('moth', DX - 3, -22); this.spawn('moth', DX + 3, -17); }
     if (!this.quest.has('keyChest')) { this.spawn('moth', DX - 4, -38); this.spawn('moth', DX + 4, -42); this.spawn('moth', DX, -36); this.spawn('crab', DX - 5, -43); this.spawn('crab', DX + 5, -37); }
     if (!this.quest.has('bossDead')) { this.boss = this.spawn('boss', DX, -70); this.boss.yaw = 0; }
   }
-  private setArea(a: 'island' | 'dungeon', instant = false) {
+  setArea(a: 'island' | 'dungeon' | 'grove' | 'sky', instant = false) {
     this.area = a;
     const w = this.world, s = this.scene;
     if (a === 'dungeon') {
@@ -346,23 +463,31 @@ export class Game {
       w.hemi.color.set(0x7fa8c8); w.hemi.groundColor.set(0x1a2a30); w.hemi.intensity = 0.55; (s as any).environmentIntensity = 0.08; w.sun.intensity = 0.35; w.sun.color.set(0x9fc8ff);
       w.water.visible = false;
       this.rs.grade.uniforms.uVig.value = 0.5;
+    } else if (a === 'grove') {
+      s.background = new THREE.Color(0x2a4a2a); s.fog = new THREE.Fog(0x3a5a38, 25, 70);
+      w.hemi.color.set(0xd8f0c0); w.hemi.groundColor.set(0x2a4a20); w.hemi.intensity = 0.9; (s as any).environmentIntensity = 0.12; w.sun.intensity = 1.8; w.sun.color.set(0xf0ffd0);
+      w.water.visible = false; this.rs.grade.uniforms.uVig.value = 0.45;
+    } else if (a === 'sky') {
+      s.background = new THREE.Color(0x3a3a6a); s.fog = new THREE.Fog(0x4a4a7a, 40, 140);
+      w.hemi.color.set(0xc8c0ff); w.hemi.groundColor.set(0x5a5a8a); w.hemi.intensity = 1.0; (s as any).environmentIntensity = 0.2; w.sun.intensity = 2.0; w.sun.color.set(0xe8e0ff);
+      w.water.visible = false; this.rs.grade.uniforms.uVig.value = 0.4;
     } else {
       s.background = new THREE.Color(0xd6f0ff); s.fog = new THREE.Fog(0xd6f0ff, 95, 260);
       w.hemi.color.set(0xcfe9ff); w.hemi.groundColor.set(0x7a9a4a); w.hemi.intensity = 1.05; (s as any).environmentIntensity = 0.2; w.sun.intensity = 2.7; w.sun.color.set(0xfff0d6);
       w.water.visible = true;
       this.rs.grade.uniforms.uVig.value = 0.32;
     }
-    this.dungeon.group.visible = a === 'dungeon';
-    this.rig.targetPitch = a === 'dungeon' ? 1.02 : 0.84; this.rig.targetDist = a === 'dungeon' ? 25 : 23;
+    this.dungeon.group.visible = a === 'dungeon'; this.arenas.grove.visible = a === 'grove'; this.arenas.sky.visible = a === 'sky';
+    this.rig.targetPitch = a === 'dungeon' ? 1.02 : 0.84; this.rig.targetDist = a === 'dungeon' ? 25 : a === 'island' ? 23 : 26;
     void instant;
   }
-  private transitionTo(a: 'island' | 'dungeon', x: number, z: number, yaw: number) {
+  transitionTo(a: 'island' | 'dungeon' | 'grove' | 'sky', x: number, z: number, yaw: number) {
     this.mode = 'transition'; this.ui.fade(true); this.audio.play('door');
     setTimeout(() => {
       this.clearEnemies();
       this.setArea(a);
       this.player.place(x, z, yaw);
-      if (a === 'dungeon') this.spawnDungeon(); else this.spawnIsland();
+      this.spawnArea(a);
       this.rig.targetYaw = yaw + Math.PI; this.rig.snap(this.player.pos);
       this.region = '';
       this.save();
@@ -390,10 +515,39 @@ export class Game {
       this.shake(0.8);
       return;
     }
+    this.codex.see('monsters', e.type);
+    events.emit('enemyKilled', e.type);
+    this.minigames.onKill(e.type);
+    if (e.type === 'guardian' || e.type === 'kingCrab' || e.type === 'storm') { this.bossDefeated(e); return; }
+    if (e.type === 'crab' && Math.random() < 0.4) this.dropItem('crabMeat', p);
+    if (e.type === 'acorn' && Math.random() < 0.15) this.dropItem('arrow', p, 3);
     const r = Math.random();
     if (r < 0.3 && this.player.hp < this.player.maxHp) this.dropItem('heart', p);
     else if (r < 0.75) this.dropItem('shell', p, Math.random() < 0.25 ? 5 : 1);
     else if (r < 0.83) this.dropItem('berry', p);
+  }
+  private bossDefeated(e: Enemy) {
+    this.ui.boss(null); this.arenaBoss = null; this.shake(0.9);
+    for (let i = 0; i < 6; i++) setTimeout(() => this.particles.poof(e.pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 5, 1 + Math.random() * 3, (Math.random() - 0.5) * 5)), 0xf0ffe0), i * 140);
+    const at = e.pos.clone().setY(e.pos.y + 1.2);
+    if (e.type === 'guardian') {
+      this.quest.set('guardianDead'); this.audio.setTheme('forest');
+      setTimeout(() => { this.dropItem('windForest', at, 1, true); this.dropItem('bow', at.clone().add(new THREE.Vector3(3, 0, 0)), 1, true); this.inv.add('arrow', 15); }, 900);
+      this.say([{ who: '', text: '수호자가 쓰러지며 초록빛 바람돌과 오래된 활을 남겼다.' }]);
+    } else if (e.type === 'kingCrab') {
+      this.quest.set('kingCrabDead'); this.audio.setTheme('beach');
+      setTimeout(() => { this.dropItem('windSea', at, 1, true); this.dropItem('heartContainer', at.clone().add(new THREE.Vector3(3, 0, 0)), 1, true); }, 900);
+    } else if (e.type === 'storm') {
+      this.quest.set('finalBossDead'); this.finalBoss = null; this.audio.setTheme('temple');
+      setTimeout(() => this.finale(), 2200);
+    }
+  }
+  private finale() {
+    this.quest.set('ending'); this.mode = 'ending';
+    this.say([{ who: '', text: '폭풍해파리가 빛 조각이 되어 흩어지자, 삼켜졌던 바람이 한꺼번에 섬으로 쏟아져 내려간다.' }, { who: '소라 할머니', text: `(멀리서) 바람이 돌아왔어! ${this.playerName}, 해냈구나!` }], () => {
+      this.save(); const t = Math.floor(this.playTime);
+      this.ui.credits({ time: `${Math.floor(t / 60)}분 ${t % 60}초`, stars: this.inv.count('starShard') });
+    });
   }
   private checkRoomClear() {
     const inC = this.enemies.filter((e) => Math.abs(e.home.z + 40) < 8 && !e.dead).length;
@@ -422,14 +576,18 @@ export class Game {
     const p = this.player.pos, f = this.player.facing();
     const near = (x: number, z: number, r: number) => Math.hypot(x - p.x, z - p.z) < r;
     const facing = (x: number, z: number) => { const dx = x - p.x, dz = z - p.z, l = Math.hypot(dx, dz) || 1; return (dx * f.x + dz * f.z) / l > 0.2; };
-    for (const n of this.npcs) if (this.area === 'island' && near(n.pos.x, n.pos.z, 2.4)) return { label: `${n.name}와 대화하기`, act: () => this.talk(n) };
+    if (this.fishing.st !== 'idle') return null;
+    for (const n of this.npcs) if (this.area === 'island' && !n.hidden && near(n.pos.x, n.pos.z, 2.4)) return { label: `${n.name}와 대화하기`, act: () => this.talk(n) };
+    if (this.area === 'island') { const x = this.explore.interact(p) ?? this.minigames.interact(p) ?? this.mount.interact(p); if (x) return x; }
+    if (this.area === 'grove' && near(GROVE.x, GROVE.z + 13.5, 2.8)) return { label: '숲 밖으로 나가기', act: () => this.transitionTo('island', -58, -16.5, Math.PI) };
+    if (this.area === 'sky' && near(SKY.x, SKY.z + 13, 2.8) && (this.quest.has('finalBossDead') || !this.finalBoss)) return { label: '사원으로 내려가기', act: () => this.transitionTo('island', 0, -76, Math.PI) };
     for (const c of this.chests.values()) if (!c.opened && c.visible && near(c.def.x, c.def.z, 2.2) && facing(c.def.x, c.def.z)) return { label: '상자 열기', act: () => this.openChest(c) };
     if (this.area === 'island') {
       for (const s of this.world.signs) if (near(s.x, s.z, 2) && facing(s.x, s.z)) return { label: '읽기', act: () => this.say([{ who: '표지판', text: s.text.replace(/\n/g, ' ') }]) };
       const rb = this.ruinsBlock, o = L.RUINS_PUZZLE.block;
       if (!this.quest.has('ruinsOpen') && !rb.moving && near(rb.col.x, rb.col.z, 2.4) && (rb.col.x !== o.x || rb.col.z !== o.z)) return { label: '돌을 제자리로 되돌리기', act: () => this.resetBlock(rb, o.x, o.z) };
       if (near(L.CAVE.x, L.CAVE.z, 4.8)) return { label: '물빛 동굴로 들어가기', act: () => this.enterCave() };
-      if (near(L.TEMPLE_POS.x, L.TEMPLE_POS.z, 2.8)) return { label: this.inv.has('moonPearl') ? '달진주 바치기' : '제단 살펴보기', act: () => this.altar() };
+      if (near(L.TEMPLE_POS.x, L.TEMPLE_POS.z, 2.8)) return { label: this.inv.has('moonPearl') ? '달진주 바치기' : (this.inv.has('windForest') && this.inv.has('windSea')) ? '바람돌 바치기' : this.quest.has('stonesPlaced') && !this.quest.has('finalBossDead') ? '하늘 길로 올라가기' : '제단 살펴보기', act: () => this.altar() };
     } else {
       if (near(DX, 8.5, 2.6)) return { label: '밖으로 나가기', act: () => this.transitionTo('island', L.CAVE.x + Math.sin(L.CAVE.yaw) * 4, L.CAVE.z + Math.cos(L.CAVE.yaw) * 4, L.CAVE.yaw) };
       const D = this.dungeon;
@@ -441,12 +599,35 @@ export class Game {
     }
     return null;
   }
+  talkTo(id: string, name: string) {
+    const q = this.qm.npcQuest(id);
+    if (q) { this.say(q.lines.map((t) => ({ who: name, text: t })), () => q.action()); return; }
+    this.say([{ who: name, text: id === 'wolf' ? '(늑대가 낑낑거린다.)' : '…' }]);
+  }
   private talk(n: NPC) {
     n.talking = true;
     if (n.id === 'elder') this.quest.set('metElder');
+    const greet = this.time_.isNight ? '밤이 깊었구나. ' : this.time_.period === 'morning' ? '좋은 아침! ' : '';
+    if (!this.quest.has('met_' + n.id) && n.id !== 'elder') { this.quest.set('met_' + n.id); }
+    // main story hand-offs
+    if (n.id === 'fisher' && this.qm.state.m7 === 'active' && !this.inv.has('map2') && !this.explore.dug.has('d_map2')) {
+      this.say([{ who: n.name, text: '바다 쪽 바람돌? 옛날에 할아버지가 그린 지도가 있지. "갈매기 바위가 내려다보는 모래밭"이라더군.' }, { who: n.name, text: '삽으로 파 보면 뭔가 나올 거야. 조심해, 뭔가 큰 게 사는 것 같거든.' }], () => { n.talking = false; this.inv.add('map2'); if (!this.inv.has('shovel')) this.inv.add('shovel'); this.ui.toast('낡은 보물지도 ②를 받았다'); });
+      return;
+    }
+    const q = this.qm.npcQuest(n.id);
+    if (q) { this.say(q.lines.map((t) => ({ who: n.name, text: t })), () => { n.talking = false; q.action(); }); return; }
+    if (n.id === 'fisher' && this.quest.has('contestOpen') && !this.fishing.contest) {
+      this.say([{ who: n.name, text: `${greet}낚시 대회 한 판 할까? 2분 동안 잡은 물고기 점수로 순위를 매긴다! (최고 ${this.fishing.bestContest}점)`, choices: [{ label: '참가할래요', value: 'contest' }, { label: '다음에', value: 'no' }] }], (v) => { n.talking = false; if (v === 'contest') { if (!this.inv.has('rod')) this.inv.add('rod'); this.inv.wear('rod'); this.fishing.startContest(); } });
+      return;
+    }
+    const rel = this.relations[n.id] ?? 0;
+    const relLines: Record<string, string> = { elder: '옛날 이야기 하나 해 줄까? 돌기둥 셋이 선 언덕은 달밤에만 흙이 빛난다더라.', baker: '요즘 버섯이랑 생선을 같이 구우면 든든하다는 소문이 돌아!', kid: '밤이 되면 바닷가 모래 어딘가가 반짝인대!', smith: '거인의 장갑이라… 산 위 바위를 들어 올릴 수 있다면 전설의 상자에 닿을 텐데.', fisher: '밤바다 절벽 아래에선 전설의 물고기를 봤다는 사람이 있어.' };
+    const lines = this.quest.npcLines(n.id).map((l, i) => i === 0 && greet ? { ...l, text: greet + l.text } : l);
+    if (rel >= 1 && relLines[n.id]) lines.push({ who: n.name, text: relLines[n.id] });
     this.say(this.quest.npcLines(n.id), (v) => {
       n.talking = false;
       if (v === 'shop') { this.openShop(); return; }
+      if (v === 'contest') return;
       if (v === 'buyBerry') {
         if (this.inv.take('shell', 10)) { this.inv.add('berry'); this.ui.shells(this.inv.count('shell')); this.audio.play('smallGet'); this.say([{ who: '다래', text: '고마워! 맛있게 먹어. 체력이 떨어지면 가방에서 꺼내 먹으면 돼.' }]); }
         else this.say([{ who: '다래', text: '어라, 조개가 모자라네. 풀숲이나 항아리를 살펴보면 조개가 나올 거야!' }]);
@@ -455,6 +636,21 @@ export class Game {
     });
   }
   openShop() {
+    const SELL_KINDS = ['fish', 'material', 'treasure', 'food'];
+    const up = (k: 'sword' | 'shield') => { const lv = this.inv.upgrades[k] ?? 0; return { lv, shells: [60, 120, 200][lv], ore: [1, 2, 3][lv] }; };
+    const render = (tab = 'buy') => {
+      const buy = [...L.SHOP, { id: 'bomb', price: 6, currency: 'shell' as const }, { id: 'arrow', price: 2, currency: 'shell' as const }].map((it) => { const d = ITEMS[it.id]; const owned = !d.stack && d.kind !== 'consumable' && this.inv.has(it.id); return { ...it, owned, equipped: owned && Object.values(this.inv.equipped).includes(it.id), afford: this.inv.count(it.currency) >= it.price }; });
+      const sell = this.inv.list().filter((id) => SELL_KINDS.includes(ITEMS[id]?.kind as string) && (ITEMS[id]?.price ?? 0) > 0).map((id) => ({ id, n: this.inv.count(id), price: Math.max(1, Math.floor((ITEMS[id].price ?? 1) * 0.6)) }));
+      const ups = (['sword', 'shield'] as const).map((k) => { const u = up(k); const free = this.quest.has('freeUpgrade'); return { key: k, label: k === 'sword' ? '검 공격력' : '방패 방어 각도', level: u.lv, max: u.lv >= 3, cost: free ? '무료(광석 의뢰 보상)' : `반짝 조개 ${u.shells} + 단단한 광석 ${u.ore}`, can: free || (this.inv.count('shell') >= u.shells && this.inv.count('ore') >= u.ore) }; });
+      this.ui.shop2({ buy, sell, upgrades: ups, wallet: { shell: this.inv.count('shell'), berry: this.inv.count('berry') } },
+        (id) => { const it = buy.find((b) => b.id === id)!; if (!this.inv.take(it.currency, it.price)) return; const n = id === 'arrow' ? 5 : id === 'bomb' ? 1 : 1; this.inv.add(id, n); if (ITEMS[id].kind !== 'consumable' && !ITEMS[id].stack) this.inv.wear(id); this.audio.play('itemGet'); this.ui.toast(`${ITEMS[id].name}${n > 1 ? ` ×${n}` : ''}을(를) 샀어요`); this.save(); render('buy'); },
+        (id, all) => { const n = all ? this.inv.count(id) : 1; const pr = Math.max(1, Math.floor((ITEMS[id].price ?? 1) * 0.6)); if (!this.inv.take(id, n)) return; this.inv.add('shell', pr * n); this.audio.play('smallGet'); this.ui.toast(`${ITEMS[id].name} ×${n} → 조개 ${pr * n}`); render('sell'); },
+        (k) => { const u = up(k as any); const free = this.quest.has('freeUpgrade'); if (u.lv >= 3) return; if (!free) { if (this.inv.count('shell') < u.shells || this.inv.count('ore') < u.ore) return; this.inv.take('shell', u.shells); this.inv.take('ore', u.ore); } else this.quest.flags.delete('freeUpgrade');
+          this.inv.upgrades[k] = u.lv + 1; this.audio.play('solve'); this.ui.questBanner('장비 강화', `${k === 'sword' ? '검' : '방패'} +${u.lv + 1}`); this.save(); render('up'); }, tab);
+    };
+    render();
+  }
+  private openShopOld() {
     const render = () => {
       const items = L.SHOP.map((it) => {
         const d = ITEMS[it.id], owned = d.kind !== 'consumable' && this.inv.has(it.id);
@@ -535,10 +731,9 @@ export class Game {
     // keep the player out of the block's new footprint
     if (Math.abs(this.player.pos.x - x) < 1.5 && Math.abs(this.player.pos.z - z) < 1.5) this.player.place(x, z + 2.5, this.player.yaw);
   }
-  private useTool() {
-    const tool = this.inv.equipped.tool;
-    if (!tool) { this.ui.toast('장착한 도구가 없어요'); return; }
-    if (tool === 'lantern') {
+  private useTool() { this.tools.use(); }
+  private useTool_lantern() {
+    {
       this.player.action = 'interact'; this.player.actionT = 0;
       const p = this.player.pos.clone().add(this.player.facing().multiplyScalar(1.2)).setY(this.player.pos.y + 1.2);
       this.particles.sparkle(p, 0x9fe8ff, 10); this.audio.play('torch');
@@ -546,14 +741,31 @@ export class Game {
     }
   }
   private altar() {
-    if (this.quest.has('ending')) { this.say([{ who: '', text: '달진주가 제단 위에서 은은하게 빛나고 있다. 섬에 기분 좋은 바람이 분다.' }]); return; }
+    if (this.quest.has('ending')) { this.say([{ who: '', text: '세 바람돌과 달진주가 제단 위에서 은은하게 빛나고 있다. 섬에 기분 좋은 바람이 분다.' }]); return; }
+    if (this.quest.has('stonesPlaced')) { this.enterSky(); return; }
+    if (this.inv.has('windForest') && this.inv.has('windSea')) {
+      this.inv.take('windForest'); this.inv.take('windSea'); this.quest.set('stonesPlaced');
+      this.audio.play('solve'); this.shake(0.5); this.particles.sparkle(this.player.pos.clone().setY(this.player.pos.y + 2), 0xbfe8ff, 40);
+      this.say([{ who: '', text: '두 바람돌이 달진주 곁에 놓이자 세 빛이 하나로 모여 하늘로 솟구친다!' }, { who: '', text: '구름 위로 빛의 길이 열렸다. 폭풍의 주인이 기다린다.' }], () => this.enterSky());
+      return;
+    }
+    if (this.quest.has('pearlPlaced')) { this.say([{ who: '', text: '제단의 문구: "세 바람이 모일 때 하늘 길이 열린다. 하나는 달, 하나는 숲, 하나는 바다에."' }, { who: '', text: `지금 가진 바람돌: ${['windForest', 'windSea'].filter((i) => this.inv.has(i)).length}/2` }]); return; }
     if (!this.inv.has('moonPearl')) { this.say([{ who: '', text: '둥근 홈이 파인 제단이다. 무언가를 올려 두었던 자리 같다.' }]); return; }
-    this.inv.take('moonPearl'); this.quest.set('ending');
-    this.mode = 'ending';
+    this.inv.take('moonPearl'); this.quest.set('pearlPlaced');
     this.placeAltarPearl(false);
     this.audio.play('solve'); this.audio.setTheme('temple'); this.shake(0.4);
-    this.rig.targetDist = 17; this.rig.targetPitch = 0.55;
-    setTimeout(() => { this.save(); const t = Math.floor(this.playTime); this.ui.credits({ time: `${Math.floor(t / 60)}분 ${t % 60}초`, stars: this.inv.count('starShard') }); }, 3200);
+    this.inv.add('bomb', 5); this.inv.wear('bomb');
+    this.say([{ who: '', text: '달진주를 올리자 제단 둘레에 글자가 떠오른다: "세 바람이 모일 때 하늘 길이 열린다. 하나는 달, 하나는 숲, 하나는 바다에."' },
+      { who: '', text: '바람이 아주 잠깐 불었다가 다시 멎었다. 제단 아래 서랍에서 오래된 조개 폭탄 꾸러미를 발견했다!' },
+      { who: this.playerName, text: '숲과 바다… 이끼숲 남쪽의 금 간 바위벽부터 가 보자.' }], () => { this.save(); });
+  }
+  enterSky() { this.transitionTo('sky', SKY.x, SKY.z + 11, Math.PI); }
+  enterGrove() { this.transitionTo('grove', GROVE.x, GROVE.z + 11, Math.PI); }
+  startKingCrab(at: THREE.Vector3) {
+    this.say([{ who: '', text: '모래 속에서 거대한 껍데기가 솟아오른다!' }], () => {
+      const e = this.spawn('kingCrab', at.x + 4, at.z - 3); e.home.set(at.x + 2, 0, at.z - 4); this.arenaBoss = e; this.audio.setTheme('boss'); this.shake(0.8);
+      this.ui.toast('껍데기에 숨으면 폭탄으로 깨뜨리자!');
+    });
   }
   private placeAltarPearl(instant: boolean) {
     const tp = L.TEMPLE_POS; const y = this.world.hf.height(tp.x, tp.z) + 2.75;
@@ -579,7 +791,8 @@ export class Game {
     if (this.input.keys.has('KeyO') && !this.fsKeyHeld) { this.fsKeyHeld = true; Fullscreen.toggle(); }
     if (!this.input.keys.has('KeyO')) this.fsKeyHeld = false;
     if (this.input.wasPressed('pause') && this.mode !== 'title' && this.mode !== 'create') { if (this.ui.panelOpen) this.ui.closePanel(); else this.ui.pause(); }
-    if (this.input.wasPressed('inventory') && this.mode !== 'title' && this.mode !== 'create') { if (this.ui.panelOpen === 'inventory') this.ui.closePanel(); else if (!this.ui.dialogOpen) this.openInventory(); }
+    if (this.input.wasPressed('inventory') && this.mode !== 'title' && this.mode !== 'create') { if (this.ui.panelOpen === 'hub') this.ui.closePanel(); else if (!this.ui.dialogOpen) this.openInventory(); }
+    if (this.input.wasPressed('map') && this.mode === 'play') { if (this.ui.panelOpen === 'hub') this.ui.closePanel(); else if (!this.ui.dialogOpen) this.openMap(); }
 
     const paused = !!this.ui.panelOpen;
     if (this.mode === 'title') this.updateTitle(dt);
@@ -638,6 +851,7 @@ export class Game {
   private updateGame(dtRaw: number) {
     const ui = this.ui, P = this.player;
     // dialog consumes input
+    if (ui.resultOpen && (this.input.wasPressed('interact') || this.input.wasPressed('attack'))) { ui.closeResult(); this.input.pressed.clear(); }
     if (ui.dialogOpen) {
       if (this.input.wasPressed('interact') || this.input.wasPressed('attack') || this.input.wasPressed('jump')) ui.advance();
       this.input.pressed.clear();
@@ -656,12 +870,24 @@ export class Game {
     }
     if (this.mode === 'play' && !ui.dialogOpen) {
       if (this.input.wasPressed('interact') && this.interactTarget) { this.interactTarget.act(); this.input.consume('interact'); this.input.consume('attack'); }
-      if (this.input.wasPressed('tool')) this.useTool();
+      if (this.input.wasPressed('tool') && this.fishing.st === 'idle') this.useTool();
+      if (this.input.wasPressed('cycle')) this.tools.cycle();
+      if (this.input.wasPressed('mount')) this.mount.toggle();
     }
     // hitstop
     let dt = dtRaw;
     if (this.hitstop > 0) { this.hitstop -= dtRaw; dt = dtRaw * 0.05; }
     if (this.mode === 'play' || this.mode === 'dead' || this.mode === 'itemget' || this.mode === 'ending') this.playTime += dtRaw;
+    // expansion systems
+    if (this.mode === 'play' && !ui.dialogOpen) this.time_.update(dtRaw);
+    this.fishing.update(dtRaw); this.fishing.updateContest(this.mode === 'play' ? dtRaw : 0);
+    this.cooking.update(this.mode === 'play' ? dtRaw : 0);
+    this.minigames.update(this.mode === 'play' ? dtRaw : 0);
+    this.tools.update(dt); this.explore.update(dt); this.mount.update(dtRaw);
+    if (this.area === 'island') this.life.update(dt);
+    P.speedMul = (this.mount.riding ? 1.75 : 1) * this.cooking.speedMul();
+    P.defenseMul = this.cooking.defenseMul() * (1 - (this.inv.upgrades.shield ?? 0) * 0.08);
+    P.extraHearts = this.cooking.extraHearts();
 
     // camera input
     const lk = this.input.look;
@@ -669,11 +895,11 @@ export class Game {
     if (this.input.keys.has('KeyZ')) this.rig.targetYaw += dtRaw * 1.8;
     if (this.input.keys.has('KeyC')) this.rig.targetYaw -= dtRaw * 1.8;
 
-    P.frozen = P.frozen || ui.dialogOpen || this.mode !== 'play';
+    P.frozen = P.frozen || ui.dialogOpen || this.mode !== 'play' || this.fishing.st !== 'idle';
     const wasFrozen = P.frozen;
     P.update(dt);
     P.frozen = wasFrozen && (this.mode === 'play' && !ui.dialogOpen) ? false : P.frozen;
-    if (this.mode === 'play' && !ui.dialogOpen) P.frozen = false;
+    if (this.mode === 'play' && !ui.dialogOpen && this.fishing.st === 'idle') P.frozen = false;
 
     // combat: player hits
     if (P.attackActive()) {
@@ -784,6 +1010,14 @@ export class Game {
 
     // NPCs
     for (const n of this.npcs) n.update(dt, P.pos);
+    this.npcs.forEach((n, i) => { const m = this.qm.marker(n.id); const sp = this.markers[i] as any; if (sp.last !== m) { sp.last = m; sp.draw(m); } if (m) sp.position.y = 2.15 + Math.sin(this.time * 3) * 0.08; });
+    const ab = this.arenaBoss;
+    if (ab && !ab.dead && ab.state !== 'idle') { this.ui.boss(ab.hp / ab.maxHp, ({ guardian: '이끼숲 수호자', kingCrab: '대왕소라게', storm: '폭풍해파리' } as Record<string, string>)[ab.type] ?? ''); this.audio.setTheme('boss'); }
+    if (this.area === 'island') { const ci = Math.floor((P.pos.x + WORLD_HALF) / (WORLD_HALF * 2) * 64), cj = Math.floor((P.pos.z + WORLD_HALF) / (WORLD_HALF * 2) * 64);
+      for (let dj = -4; dj <= 4; dj++) for (let di = -4; di <= 4; di++) if (di * di + dj * dj <= 18) { const i = ci + di, j = cj + dj; if (i >= 0 && j >= 0 && i < 64 && j < 64) this.discovered[j * 64 + i] = 1; } }
+    ui.clock(this.area === 'island' ? this.time_.label() : this.area === 'dungeon' ? '물빛 동굴' : this.area === 'grove' ? '수호자의 숲' : '하늘 정원');
+    ui.buffs(this.cooking.buffs); ui.tracker(this.qm);
+    this.touch.setCtx(this.mount.friend && this.area === 'island' ? (this.mount.riding ? '내리기' : '늑대') : null);
     // altar beam
     if (this.beam) { const m = this.beam.material as THREE.MeshBasicMaterial; m.opacity = damp(m.opacity, 0.22 + Math.sin(this.time * 2) * 0.04, 1.5, dt); this.altarPearl!.rotation.y += dt; }
 
@@ -800,7 +1034,7 @@ export class Game {
 
     // world
     this.world.update(dt, this.time, P.pos);
-    this.updateDayCycle(dtRaw);
+    // lighting is driven by TimeWeather (clock + weather)
     this.particles.update(dt);
     // chimney smoke drifting with the wind
     if (this.area === 'island') for (const c of this.world.chimneys) if (Math.random() < dt * 5 && c.distanceTo(P.pos) < 60) this.particles.emit({ pos: c, vel: new THREE.Vector3(0.5, 1.3, 0.25), count: 1, spread: 0.15, life: 2.8, size: 0.55, grow: 2.4, color: 0xf2eee8, grav: -0.05, drag: 0.25 });
@@ -819,13 +1053,16 @@ export class Game {
     if (k.id === 'heart') { P.heal(2); this.audio.play('heal'); }
     else if (k.id === 'shell') { this.inv.add('shell', k.count); this.audio.play('smallGet'); }
     else if (k.id === 'berry') { this.inv.add('berry', k.count); this.audio.play('smallGet'); this.ui.toast('회복 열매를 주웠어요'); }
+    else if (['material', 'ammo', 'food'].includes(ITEMS[k.id]?.kind as string)) { this.inv.add(k.id, k.count); this.audio.play('smallGet'); this.ui.toast(`${ITEMS[k.id].name} ×${k.count}`); }
     else { this.giveItem(k.id, k.count); return; }
     this.particles.sparkle(k.pos.clone(), k.id === 'heart' ? 0xff8aa0 : 0xfff0d0, 6);
   }
   private updateRegion() {
     const P = this.player.pos;
+    if (this.area === 'grove' || this.area === 'sky') return;
     const r: Region = this.area === 'dungeon' ? 'cave' : this.world.hf.regionAt(P.x, P.z);
     if (r === this.region) return;
+    this.codex.see('places', r);
     const first = this.region === '';
     this.region = r;
     this.ui.areaName(REGION_NAMES[r]);
@@ -859,16 +1096,14 @@ export class Game {
   /** Where the current objective physically is (for the on-screen guide arrow and minimap star). */
   /** Coarse objective direction: points at the destination area, not at the exact object,
    *  so players still explore. No guidance inside the cave (it is a straight run). */
-  goal(area: 'island' | 'dungeon' = this.area): { x: number; z: number; y: number; label: string } | null {
-    if (area === 'dungeon') return null;
-    const at = (x: number, z: number, label: string) => ({ x, z, label, y: this.world.hf.height(x, z) });
-    switch (this.quest.stage()) {
-      case 0: case 1: return at(0, 22, '솔방울 마을');
-      case 2: return at(56, 50, '옛 등대 폐허');
-      case 3: case 4: return at(L.CAVE.x, L.CAVE.z, '물빛 동굴');
-      case 5: return at(L.TEMPLE_POS.x, L.TEMPLE_POS.z, '달빛 사원');
-      default: return null;
-    }
+  goal(area: string = this.area): { x: number; z: number; y: number; label: string } | null {
+    if (area !== 'island') return null;
+    const q = this.qm.activeMain(); const t = q?.target; if (!t) return null;
+    // coarse guidance: villages/area centres rather than exact objects
+    const coarse: Record<string, [number, number, string]> = { m1: [0, 22, '솔방울 마을'], m2: [0, 22, '솔방울 마을'], m3: [56, 50, '옛 등대 폐허'] };
+    const c = coarse[q!.id];
+    const [x, z, label] = c ?? [t.x, t.z, t.label];
+    return { x, z, label, y: this.world.hf.height(x, z) };
   }
   private updateGuide() {
     const g = this.mode === 'play' && !this.ui.dialogOpen ? this.goal() : null;

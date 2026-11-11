@@ -28,7 +28,7 @@ export class Player {
   action: AnimAction = 'none'; actionT = 0; combo = 0; queued = false; swingId = 0;
   private sword: THREE.Object3D; private shield: THREE.Object3D; private shieldPiv = new THREE.Group();
   private held: THREE.Object3D | null = null; heldT = 0;
-  guardW = 0; frozen = false; lookAhead = 0; lastSafe = new THREE.Vector3(); private stepAcc = 0; inWater = false;
+  guardW = 0; frozen = false; lookAhead = 0; riding = false; speedMul = 1; defenseMul = 1; extraHearts = 0; lastSafe = new THREE.Vector3(); private stepAcc = 0; inWater = false;
   shadow: THREE.Mesh;
   private knock = new THREE.Vector3();
   onLand?: (speed: number) => void;
@@ -47,7 +47,7 @@ export class Player {
     this.shadow = blobShadow(0.75); scene.add(this.shadow);
   }
   scene: THREE.Scene; look: HumanoidLook; private gearKey = '';
-  get maxHp() { return (this.invt.maxHearts + this.invt.armorHearts()) * 2; }
+  get maxHp() { return (this.invt.maxHearts + this.invt.armorHearts() + this.extraHearts) * 2; }
   /** Rebuild the body (appearance or worn armour changed) and re-attach the hand-held gear. */
   setLook(look: HumanoidLook) {
     this.look = { ...look };
@@ -102,6 +102,7 @@ export class Player {
         return 'blocked';
       }
     }
+    dmg = Math.max(1, Math.round(dmg * this.defenseMul));
     this.hp = Math.max(0, this.hp - dmg);
     this.inv = 1.1;
     this.knock.copy(dir).multiplyScalar(knock);
@@ -148,13 +149,13 @@ export class Player {
       if (wantGuard && this.action === 'none') this.setAction('guard');
       if (this.action === 'guard' && !wantGuard) this.setAction('none');
       // attack / combo
-      if (inp.wasPressed('attack') && hasSword) {
+      if (inp.wasPressed('attack') && hasSword && !this.riding) {
         if (!this.grounded && this.action !== 'jumpAttack' && this.action !== 'roll') { this.setAction('jumpAttack'); this.swingId++; this.vy = Math.max(this.vy, 3); events.emit('sfx', 'swing2'); }
         else if (this.action === 'none' || this.action === 'guard') { this.combo = 0; this.startSwing(wish, mag); }
         else if (this.action === 'attack') this.queued = true;
       }
       // roll
-      if (inp.wasPressed('roll') && this.grounded && (this.action === 'none' || this.action === 'guard' || (this.action === 'attack' && this.actionT > 0.2))) {
+      if (inp.wasPressed('roll') && !this.riding && this.grounded && (this.action === 'none' || this.action === 'guard' || (this.action === 'attack' && this.actionT > 0.2))) {
         this.setAction('roll');
         const d = mag > 0.1 ? wish : this.facing();
         this.yaw = Math.atan2(d.x, d.z);
@@ -163,7 +164,7 @@ export class Player {
       }
       // jump
       if (inp.wasPressed('jump') && this.grounded && (this.action === 'none' || this.action === 'guard')) {
-        this.vy = JUMP_V; this.grounded = false; this.setAction('none'); events.emit('sfx', 'jump');
+        this.vy = JUMP_V * (this.riding ? 1.15 : 1); this.grounded = false; this.setAction('none'); events.emit('sfx', 'jump');
         events.emit('dust', this.pos.clone());
       }
     }
@@ -181,7 +182,7 @@ export class Player {
     this.guardW = damp(this.guardW, this.action === 'guard' ? 1 : 0, 18, dt);
 
     // ---------------- horizontal velocity ----------------
-    let maxSpeed = (inp.isDown('run') || (inp.stick.active && mag > 0.92)) ? RUN : WALK;
+    let maxSpeed = ((inp.isDown('run') || (inp.stick.active && mag > 0.92)) ? RUN : WALK) * this.speedMul;
     if (this.action === 'guard') maxSpeed = 2.0;
     const canSteer = !locked && (this.action === 'none' || this.action === 'guard' || (!this.grounded && this.action !== 'roll'));
     if (this.action === 'roll') {
@@ -266,6 +267,7 @@ export class Player {
 
     // ---------------- visuals ----------------
     this.rig.root.position.copy(this.pos);
+    if (this.riding) this.rig.root.position.y += 0.95;
     this.rig.root.rotation.y = this.yaw;
     const blink = this.inv > 0 && this.action !== 'dead' && Math.floor(this.inv * 14) % 2 === 0;
     this.rig.root.visible = !blink;
@@ -273,8 +275,8 @@ export class Player {
     const w = this.guardW;
     this.shieldPiv.position.set(-0.08 * (1 - w) - 0.2 * w, 0.2 + 0.05 * w, -0.27 * (1 - w) + 0.42 * w);
     this.shieldPiv.rotation.set(0, Math.PI * (1 - w) + 0.15 * w, 0);
-    const spd = Math.hypot(this.vel.x, this.vel.z);
-    this.anim.update(dt, { speed: spd, maxSpeed: RUN, grounded: this.grounded, vy: this.vy, turnRate: this.turnRate, action: this.action, actionT: this.actionT, combo: this.combo, landT: this.landT, dist: this.dist, guardW: this.guardW, lookAhead: this.lookAhead });
+    const spd = this.riding ? 0 : Math.hypot(this.vel.x, this.vel.z);
+    this.anim.update(dt, { speed: spd, maxSpeed: RUN, grounded: this.grounded, vy: this.vy, turnRate: this.turnRate, action: this.riding && this.action === 'none' ? 'sit' : this.action, actionT: this.actionT, combo: this.combo, landT: this.landT, dist: this.riding ? 0 : this.dist, guardW: this.guardW, lookAhead: this.lookAhead });
     // blob contact shadow (soft AO under the feet)
     const sg = env.groundAt(this.pos.x, this.pos.z, this.pos.y + 0.2);
     this.shadow.position.set(this.pos.x, sg + 0.04, this.pos.z);

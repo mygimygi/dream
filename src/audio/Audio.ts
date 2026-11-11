@@ -150,6 +150,12 @@ export class AudioSystem {
     this.wind.g.gain.setTargetAtTime(wind * 0.12, t, 1.2);
     this.waves.g.gain.setTargetAtTime(waves * 0.22, t, 1.2);
   }
+  setRain(k: number) {
+    if (!this.ctx || !this.waves) return;
+    if (!this.rainG) { const c = this.ctx, src = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain(); src.buffer = this.noise; src.loop = true; f.type = 'highpass'; f.frequency.value = 2500; g.gain.value = 0; src.connect(f).connect(g).connect(this.ambBus); src.start(); this.rainG = g; }
+    this.rainG.gain.setTargetAtTime(k * 0.25, this.ctx.currentTime, 0.8);
+  }
+  private rainG?: GainNode;
   private tick() { for (const x of this.tracks) x.tr.schedule(); }
 
   // ----------------------------- SFX -----------------------------
@@ -210,6 +216,11 @@ export class AudioSystem {
       case 'uiBack': this.tone(700, 500, 0.06, 'triangle', 0.06); break;
       case 'talk': this.tone(500 + Math.random() * 300, 500, 0.03, 'triangle', 0.03); break;
       case 'splash': this.hiss(0.4, 2000, 400, 0.3, 'bandpass', 0.6); break;
+      case 'dig': this.hiss(0.18, 900, 300, 0.7, 'lowpass', 1); this.tone(120, 70, 0.12, 'sine', 0.3); break;
+      case 'fuse': this.hiss(0.6, 3000, 5000, 0.18, 'highpass', 1); break;
+      case 'boom': this.duck(0.2, 0.7); this.tone(90, 30, 0.6, 'sine', 0.9); this.hiss(0.7, 1500, 80, 1.0, 'lowpass', 0.7); break;
+      case 'bow': this.tone(300, 900, 0.08, 'triangle', 0.3); this.hiss(0.18, 2500, 5000, 0.4, 'bandpass', 2); break;
+      case 'zap': this.tone(1800, 200, 0.25, 'sawtooth', 0.15); this.hiss(0.2, 6000, 2000, 0.3, 'highpass'); break;
       case 'lowHp': this.tone(880, 880, 0.08, 'square', 0.04); this.tone(660, 660, 0.08, 'square', 0.04, 0.12); break;
     }
   }

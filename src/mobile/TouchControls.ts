@@ -15,6 +15,8 @@ export class TouchControls {
         <div class="tb guard" data-a="guard">방어</div>
         <div class="tb tool" data-a="tool">도구</div>
         <div class="tb act" data-a="interact">조사</div>
+        <div class="tb cyc" data-a="cycle">⇄</div>
+        <div class="tb ctx" data-a="mount" hidden>늑대</div>
       </div>`;
     parent.prepend(this.root);
     this.stickEl = this.root.querySelector('.stick')!; this.knob = this.stickEl.querySelector('i')!;
@@ -54,5 +56,6 @@ export class TouchControls {
   private pinchDist() { const a = [...this.camTouches.values()]; return a.length < 2 ? 0 : Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y); }
   use() { if (this.enabled) return; this.enabled = true; this.input.usingTouch = true; this.root.classList.add('on'); }
   setVisible(v: boolean) { this.root.style.visibility = v ? '' : 'hidden'; }
+  setCtx(t: string | null) { const b = this.root.querySelector('.ctx') as HTMLElement; if (!b) return; b.hidden = !t; if (t && b.textContent !== t) b.textContent = t; }
   setActLabel(t: string | null) { this.actBtn.textContent = t ?? '조사'; this.actBtn.style.opacity = t ? '1' : '0.55'; }
 }

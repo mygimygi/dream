@@ -15,6 +15,7 @@ const LOOKS: Record<string, HumanoidLook> = {
 const IDLE: Record<string, AnimAction> = { elder: 'idleElder', baker: 'idleBaker', fisher: 'idleFisher', kid: 'idleKid', smith: 'idleSmith' };
 export class NPC {
   rig; anim: HumanoidAnimator; pos: THREE.Vector3; yaw = 0; homeYaw = 0; talking = false; t = Math.random() * 10;
+  collider: any = null; walking = 0; walkYaw = 0; hidden = false; private dist = 0; private shadowM!: THREE.Mesh;
   constructor(scene: THREE.Scene, public id: string, public name: string, x: number, z: number, y: number) {
     this.rig = buildHumanoid(LOOKS[id] ?? LOOKS.baker);
     scene.add(this.rig.root);
@@ -23,15 +24,17 @@ export class NPC {
     this.homeYaw = Math.atan2(0 - x, 22 - z);
     this.yaw = this.homeYaw;
     this.anim = new HumanoidAnimator(this.rig);
-    const sh = blobShadow(0.6); sh.position.set(x, y + 0.04, z); scene.add(sh);
+    const sh = blobShadow(0.6); sh.position.set(x, y + 0.04, z); scene.add(sh); this.shadowM = sh;
   }
   update(dt: number, player: THREE.Vector3) {
     this.t += dt;
     const d = Math.hypot(player.x - this.pos.x, player.z - this.pos.z);
-    const target = d < 5 ? Math.atan2(player.x - this.pos.x, player.z - this.pos.z) : this.homeYaw;
+    const target = this.walking > 0 ? this.walkYaw : d < 5 ? Math.atan2(player.x - this.pos.x, player.z - this.pos.z) : this.homeYaw;
+    this.dist += this.walking * dt;
+    this.shadowM.position.set(this.pos.x, this.pos.y + 0.04, this.pos.z); this.shadowM.visible = !this.hidden;
     this.yaw = dampAngle(this.yaw, target, 5, dt);
     this.rig.root.rotation.y = this.yaw;
-    const wave = !this.talking && d < 7 && d > 3 && Math.sin(this.t * 0.7) > 0.6;
-    this.anim.update(dt, { speed: 0, maxSpeed: 1, grounded: true, vy: 0, turnRate: 0, action: this.talking ? 'talk' : wave ? 'wave' : IDLE[this.id] ?? 'none', actionT: this.t, combo: 0, landT: 1, dist: 0 });
+    const wave = !this.talking && !this.walking && d < 7 && d > 3 && Math.sin(this.t * 0.7) > 0.6;
+    this.anim.update(dt, { speed: this.walking, maxSpeed: 4.3, grounded: true, vy: 0, turnRate: 0, action: this.talking ? 'talk' : this.walking > 0 ? 'none' : wave ? 'wave' : IDLE[this.id] ?? 'none', actionT: this.t, combo: 0, landT: 1, dist: this.dist });
   }
 }

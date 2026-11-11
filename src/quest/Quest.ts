@@ -11,6 +11,7 @@ export class Quest {
   set(f: string) { if (this.flags.has(f)) return; this.flags.add(f); events.emit('flag', f); events.emit('quest'); }
   stage(): number {
     if (this.has('ending')) return 6;
+    if (this.has('pearlPlaced')) return 7;
     if (this.inv.has('moonPearl')) return 5;
     if (this.has('enteredCave')) return 4;
     if (this.inv.has('lantern')) return 3;
@@ -43,6 +44,7 @@ export class Quest {
         if (s === 2) return [{ who: '소라 할머니', text: '폐허 문은 무거운 돌이 발판을 눌러야 열린다고 들었어. 힘으로 밀어 보렴.' }, { who: '소라 할머니', text: '이끼숲 덤불 너머에는 튼튼한 방패가 숨겨져 있다더구나.' }];
         if (s === 3 || s === 4) return [{ who: '소라 할머니', text: '물빛 동굴은 북쪽 산길에서 서쪽으로 갈라진 길 끝에 있단다. 조심하렴.' }];
         if (s === 5) return [{ who: '소라 할머니', text: '달진주를 되찾았구나! 어서 구름봉 꼭대기 사원에 바치렴.' }];
+        if (s === 7) return [{ who: '소라 할머니', text: '세 바람이라… 숲의 바람은 이끼숲 남쪽 금 간 바위벽 너머, 바다의 바람은 도윤이가 뭔가 알 게다.' }, { who: '소라 할머니', text: '폭탄은 조심해서 쓰렴. 대장간 바위가 더 팔고 있을 거야.' }];
         return [{ who: '소라 할머니', text: `바람이 돌아왔어. 고맙다, ${this.name}. 이제 섬 구석구석을 마음껏 돌아다녀 보렴.` }];
       case 'baker':
         return [

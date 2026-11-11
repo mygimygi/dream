@@ -1,10 +1,10 @@
 // Unified input: keyboard + mouse, with a virtual layer the touch controls write into.
-export type Action = 'attack' | 'jump' | 'roll' | 'guard' | 'interact' | 'tool' | 'run' | 'pause' | 'inventory' | 'map';
+export type Action = 'attack' | 'jump' | 'roll' | 'guard' | 'interact' | 'tool' | 'run' | 'pause' | 'inventory' | 'map' | 'cycle' | 'mount';
 
 const KEYMAP: Record<string, Action> = {
   KeyJ: 'attack', KeyK: 'roll', Space: 'jump', KeyL: 'guard', KeyE: 'interact', KeyF: 'interact', KeyQ: 'tool',
   ShiftLeft: 'run', ShiftRight: 'run', Escape: 'pause',  KeyP: 'pause', KeyI: 'inventory', Tab: 'inventory', KeyM: 'map',
-  Enter: 'interact',
+  Enter: 'interact', KeyR: 'cycle', KeyG: 'mount',
 };
 
 export class Input {
@@ -17,7 +17,7 @@ export class Input {
   touchHeld = new Set<Action>();
   // camera deltas accumulated this frame
   look = { dx: 0, dy: 0, zoom: 0 };
-  mouseDown = false;
+  mouseDown = false; mouseLeft = false;
   pointerLockWanted = false;
   usingTouch = false;
 
@@ -35,11 +35,11 @@ export class Input {
     addEventListener('keyup', (e) => this.keys.delete(e.code));
     addEventListener('blur', () => { this.keys.clear(); this.mouseDown = false; });
     el.addEventListener('mousedown', (e) => {
-      if (e.button === 0) { this.queue.add('attack'); }
+      if (e.button === 0) { this.queue.add('attack'); this.mouseLeft = true; }
       if (e.button === 2) { this.mouseDown = true; }
       this.usingTouch = false;
     });
-    addEventListener('mouseup', (e) => { if (e.button === 2) this.mouseDown = false; });
+    addEventListener('mouseup', (e) => { if (e.button === 2) this.mouseDown = false; if (e.button === 0) this.mouseLeft = false; });
     el.addEventListener('contextmenu', (e) => e.preventDefault());
     addEventListener('mousemove', (e) => {
       if (this.mouseDown || document.pointerLockElement === el) { this.look.dx += e.movementX; this.look.dy += e.movementY; }
@@ -53,6 +53,7 @@ export class Input {
     this.held.clear();
     for (const k of this.keys) { const a = KEYMAP[k]; if (a) this.held.add(a); }
     this.touchHeld.forEach((a) => this.held.add(a));
+    if (this.mouseLeft) this.held.add('attack');
   }
   endFrame() { this.look.dx = 0; this.look.dy = 0; this.look.zoom = 0; }
   move(): { x: number; y: number } {

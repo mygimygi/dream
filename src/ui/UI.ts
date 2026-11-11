@@ -17,7 +17,7 @@ const heartSVG = (fill: number) => {
 export class UI {
   root = document.getElementById('ui') as HTMLDivElement;
   icons: Record<string, string> = {};
-  private el: Record<string, HTMLElement> = {};
+  protected el: Record<string, HTMLElement> = {};
   private dlgQueue: Line[] = []; private dlgDone?: (v?: string) => void; private typing = 0; private typeTimer = 0; private fullText = '';
   dialogOpen = false; panelOpen: string | null = null;
   onChoice?: (v: string) => void;
@@ -90,7 +90,7 @@ export class UI {
     this.el.itemget.hidden = false;
   }
   hideItemGet() { this.el.itemget.hidden = true; }
-  boss(frac: number | null) { this.el.boss.hidden = frac === null; if (frac !== null) (this.el.bossFill as HTMLElement).style.width = `${Math.max(0, frac) * 100}%`; }
+  boss(frac: number | null, name = '가시고둥왕') { this.el.boss.hidden = frac === null; if (frac !== null) (this.el.boss.querySelector('b') as HTMLElement).textContent = name; if (frac !== null) (this.el.bossFill as HTMLElement).style.width = `${Math.max(0, frac) * 100}%`; }
   guide(g: { x: number; y: number; angle: number; onScreen: boolean; label: string; dist: number } | null) {
     const el = this.el.guide;
     if (!g) { el.hidden = true; return; }
@@ -141,7 +141,7 @@ export class UI {
 
   // ---------------- panels ----------------
   closePanel() { this.el.panel.hidden = true; this.panelOpen = null; }
-  private panel(name: string, html: string) { this.panelOpen = name; this.el.panel.hidden = false; this.el.panelBody.innerHTML = html; this.el.panelBody.querySelectorAll<HTMLElement>('[data-m]').forEach((b) => b.addEventListener('click', () => { this.sfx('ui'); this.onMenu?.(b.dataset.m!); })); }
+  panel(name: string, html: string) { this.panelOpen = name; this.el.panel.hidden = false; this.el.panelBody.innerHTML = html; this.el.panelBody.querySelectorAll<HTMLElement>('[data-m]').forEach((b) => b.addEventListener('click', () => { this.sfx('ui'); this.onMenu?.(b.dataset.m!); })); }
   inventory(inv: Inventory, stats: { shells: number; stars: number; time: string; hp: number; max: number }) {
     const ids = inv.list();
     let sel = ids[0];

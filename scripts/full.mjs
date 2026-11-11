@@ -1,5 +1,5 @@
 // End-to-end playthrough using real key input where it matters, teleports between objectives.
-const tp = (G, x, z, yaw) => G(([x, z, yaw]) => { const g = window.__game; g.player.place(x, z, yaw); g.rig.targetYaw = yaw + Math.PI; g.rig.snap(g.player.pos); }, [x, z, yaw]);
+const tp = (G, x, z, yaw) => G(([x, z, yaw]) => { const g = window.__game; g.player.hp = g.player.maxHp; g.player.place(x, z, yaw); g.rig.targetYaw = yaw + Math.PI; g.rig.snap(g.player.pos); }, [x, z, yaw]);
 const state = (G) => G(() => { const g = window.__game; return { mode: g.mode, area: g.area, hp: g.player.hp, inv: { ...g.inv.counts }, eq: { ...g.inv.equipped }, stage: g.quest.stage(), flags: [...g.quest.flags], dialog: g.ui.dialogOpen, prompt: g.interactTarget?.label ?? null, pos: g.player.pos.toArray().map((v) => +v.toFixed(2)) }; });
 const closeDialogs = async ({ page, G, frames }) => { for (let i = 0; i < 12; i++) { const s = await G(() => ({ d: window.__game.ui.dialogOpen, m: window.__game.mode })); if (!s.d && s.m !== 'itemget') return; await page.keyboard.press('KeyE'); await frames(6); } };
 export default {
@@ -43,7 +43,7 @@ export default {
     await page.keyboard.press('KeyE'); await frames(30); await closeDialogs(ctx); await log('after lantern');
     // 5) cave
     await tp(G, -31 + Math.sin(0.65) * 3.5, -46.5 + Math.cos(0.65) * 3.5, 0.65 + Math.PI); await frames(4); await log('at cave');
-    await page.keyboard.press('KeyE'); await frames(60); await log('in dungeon'); await shot('f_dungeon');
+    await page.keyboard.press('KeyE'); await frames(60); await G(() => { window.__game.player.inv = 1e9; }); await log('in dungeon'); await shot('f_dungeon');
     // torches
     for (const x of [996, 1004]) { await tp(G, x, -2, Math.PI); await frames(3); await page.keyboard.press('KeyQ'); await frames(10); }
     await frames(60); await log('torches'); await shot('f_torches');
@@ -67,7 +67,7 @@ export default {
     // boss
     await tp(G, 1000, -58, Math.PI); await frames(60); await shot('f_boss');
     await G(() => { const g = window.__game; g.boss.state = 'stun'; g.boss.dizzy = 2; });
-    await G(() => { const g = window.__game; const b = g.boss; g.player.place(b.pos.x, b.pos.z + 3.4, Math.PI); });
+    await G(() => { const g = window.__game; const b = g.boss; g.player.hp = g.player.maxHp; g.player.place(b.pos.x, b.pos.z + 3.4, Math.PI); });
     for (let i = 0; i < 3; i++) { await page.keyboard.press('KeyJ'); await frames(5); }
     console.log('boss hp after combo', await G(() => window.__game.boss?.hp));
     await G(() => { const g = window.__game; g.boss.damage(99, g.player.pos); });
