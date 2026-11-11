@@ -79,7 +79,7 @@ export function buildTerrain(hf: Heightfield): THREE.Mesh {
   g.setIndex(new THREE.BufferAttribute(idx, 1));
   g.computeBoundingSphere(); g.computeBoundingBox();
 
-  const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.93, metalness: 0 });
+  const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.93, metalness: 0, envMapIntensity: 0 });
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uTime = U.uTime;
     sh.vertexShader = sh.vertexShader

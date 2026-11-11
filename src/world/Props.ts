@@ -68,6 +68,7 @@ export function cottage(seed: number, roofColor: number, wallColor = 0xf1e2c4): 
   const ca = r() * Math.PI * 2;
   const ch = merge([colorize(at(rbox(0.6, 1.3, 0.6, 0.12), 0, 0.65, 0), 0xb9ab95, 0.2, seed), colorize(at(rbox(0.75, 0.2, 0.75, 0.08), 0, 1.35, 0), 0x8f8270)]);
   grp.add(mesh(at(ch, Math.cos(ca) * RR * 0.45, H + th * 0.62, Math.sin(ca) * RR * 0.45), MAT.vcOcc));
+  grp.userData.chimney = new THREE.Vector3(Math.cos(ca) * RR * 0.45, H + th * 0.62 + 1.5, Math.sin(ca) * RR * 0.45);
   // door facing +z
   const door = planks(roundDoor(1.1, 1.75), 0x9a6236, 0x7a4a28, 'x', 0.22);
   grp.add(mesh(at(door, 0, 0.05, R - 0.02), MAT.vcOcc));
@@ -426,5 +427,59 @@ export function smithStall(): THREE.Group {
     const b = colorize(at(rbox(0.07, 0.75, 0.02, 0.02), -1.1 + i * 0.3, 1.5, -0.38, 0, 0, 0.05), [0xdfe9f2, 0xf2d9b0, 0xfff6e0][i]);
     g.add(mesh(merge([b, colorize(at(rbox(0.2, 0.05, 0.05, 0.01), -1.1 + i * 0.3, 1.13, -0.38), 0x6e4426)])));
   }
+  return g;
+}
+
+/** Vegetable garden: tilled soil rows with leafy sprouts, a scarecrow-ish marker post and a watering can. */
+export function gardenPlot(w: number, d: number, seed: number): THREE.Group {
+  const g = new THREE.Group(); const r = mulberry32(seed);
+  const parts: THREE.BufferGeometry[] = [colorize(at(rbox(w, 0.22, d, 0.1), 0, 0.06, 0), 0x6e4a2e, 0.15, seed)];
+  const rows = Math.max(2, Math.round(d / 0.9));
+  for (let i = 0; i < rows; i++) {
+    const z = -d / 2 + (i + 0.5) * (d / rows);
+    parts.push(colorize(at(rbox(w - 0.3, 0.2, 0.42, 0.12), 0, 0.2, z), 0x86603a, 0.15, seed + i));
+    for (let x = -w / 2 + 0.45; x < w / 2 - 0.3; x += 0.62) {
+      const kind = (i + seed) % 3;
+      if (kind === 0) parts.push(gradient(at(blob(0.2, x * 9 + i, 0.25, 1), x, 0.42, z, 0, r() * 6, 0, [1, 0.7, 1]), 0x3f8a2c, 0x9ad850, 0.25, 0.6));
+      else if (kind === 1) { parts.push(colorize(at(sphere(0.12, 8, 6), x, 0.36, z), 0xf08a3a)); parts.push(gradient(at(blob(0.13, x * 7 + i, 0.3, 1), x, 0.52, z, 0, 0, 0, [0.6, 1.2, 0.6]), 0x3f8a2c, 0x7ac040, 0.4, 0.7)); }
+      else parts.push(gradient(at(blob(0.22, x * 5 - i, 0.2, 1), x, 0.4, z, 0, 0, 0, [1.1, 0.55, 1.1]), 0x5aa83a, 0xc8f080, 0.3, 0.55));
+    }
+  }
+  g.add(mesh(merge(parts)));
+  // little wooden border
+  for (const sz of [-1, 1]) g.add(mesh(colorize(at(rbox(w + 0.3, 0.32, 0.16, 0.05), 0, 0.16, sz * (d / 2 + 0.08)), 0xa87244)));
+  for (const sx of [-1, 1]) g.add(mesh(colorize(at(rbox(0.16, 0.32, d + 0.3, 0.05), sx * (w / 2 + 0.08), 0.16, 0), 0xa87244)));
+  // watering can
+  const can = merge([colorize(at(cyl(0.16, 0.18, 0.3, 12), 0, 0.15, 0), 0x5a9ac8), colorize(at(cyl(0.025, 0.035, 0.32, 6), 0.2, 0.24, 0, 0, 0, -1.0), 0x5a9ac8), colorize(at(new THREE.TorusGeometry(0.1, 0.02, 6, 12, Math.PI), 0, 0.3, 0), 0x4a7aa8)]);
+  g.add(mesh(at(can, w / 2 + 0.5, 0, d / 2 - 0.2)));
+  return g;
+}
+/** Wooden planter box overflowing with flowers. */
+export function planter(seed: number): THREE.Group {
+  const g = new THREE.Group(); const r = mulberry32(seed);
+  const parts: THREE.BufferGeometry[] = [planks(at(rbox(1.2, 0.45, 0.5, 0.06), 0, 0.22, 0), 0xb07a44, 0x8a5a32, 'x', 0.3), colorize(at(rbox(1.08, 0.08, 0.38, 0.03), 0, 0.44, 0), 0x5a3a22)];
+  const cols = [0xf06a8a, 0xffd34d, 0xffffff, 0x8ab8ff, 0xf08a3a];
+  for (let i = 0; i < 9; i++) {
+    const x = -0.45 + (i % 5) * 0.22 + (r() - 0.5) * 0.08, z = (Math.floor(i / 5) - 0.5) * 0.18;
+    parts.push(gradient(at(blob(0.11, i + seed, 0.3, 1), x, 0.52, z), 0x3f8a2c, 0x7ac040, 0.45, 0.6));
+    parts.push(colorize(at(sphere(0.075, 8, 6), x, 0.66 + r() * 0.06, z), cols[Math.floor(r() * cols.length)]));
+  }
+  g.add(mesh(merge(parts)));
+  return g;
+}
+export function bench(): THREE.Group {
+  const g = new THREE.Group();
+  const parts = [planks(at(rbox(1.8, 0.1, 0.5, 0.04), 0, 0.48, 0), 0xb07a44, 0x9a6638, 'x', 0.3), planks(at(rbox(1.8, 0.4, 0.08, 0.04), 0, 0.85, -0.24, -0.15, 0, 0), 0xb07a44, 0x9a6638, 'y', 0.13)];
+  for (const sx of [-0.75, 0.75]) parts.push(colorize(at(rbox(0.12, 0.48, 0.45, 0.04), sx, 0.24, 0), 0x6e4426));
+  g.add(mesh(merge(parts)));
+  return g;
+}
+export function barrel(): THREE.Group {
+  const g = new THREE.Group();
+  const b = lathe([[0, 0], [0.36, 0], [0.42, 0.25], [0.44, 0.45], [0.42, 0.65], [0.36, 0.9], [0, 0.9]], 18);
+  const p = b.attributes.position, col = new Float32Array(p.count * 3);
+  for (let i = 0; i < p.count; i++) { const y = p.getY(i), a = Math.atan2(p.getZ(i), p.getX(i)); const band = Math.abs(y - 0.18) < 0.05 || Math.abs(y - 0.72) < 0.05; const c = band ? new THREE.Color(0x5a5a62) : new THREE.Color(0xb07a44).multiplyScalar(0.85 + 0.15 * Math.abs(Math.sin(a * 8))); col.set([c.r, c.g, c.b], i * 3); }
+  b.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  g.add(mesh(b));
   return g;
 }

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RenderSystem } from '../render/Renderer';
-import { U } from '../render/Materials';
+import { U, TOY } from '../render/Materials';
 import { Particles } from '../render/Particles';
 import { World, ChestEnt } from '../world/World';
 import { REGION_NAMES, Region } from '../world/Heightfield';
@@ -51,7 +51,7 @@ interface Pickup { obj: THREE.Object3D; id: string; pos: THREE.Vector3; vel: THR
 
 export class Game {
   scene = new THREE.Scene();
-  cam = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.3, 900);
+  cam = new THREE.PerspectiveCamera(25, innerWidth / innerHeight, 0.3, 900);
   rs: RenderSystem; world: World; rig: CameraRig; input: Input; player: Player; inv = new Inventory(); quest: Quest;
   ui = new UI(); audio = new AudioSystem(); particles: Particles; minimap: Minimap; touch: TouchControls; dungeon: Dungeon;
   npcs: NPC[] = []; enemies: Enemy[] = []; shots: Projectile[] = []; pickups: Pickup[] = [];
@@ -74,7 +74,8 @@ export class Game {
     this.qLevel = urlQ ?? (this.settings.quality === 'auto' ? detectQuality() : this.settings.quality);
     const q = profile(this.qLevel);
     this.rs = new RenderSystem(canvas, this.scene, this.cam);
-    this.world = new World(this.scene, q);
+    TOY.gloss = q.level === 'low' ? 0 : 1;
+    this.world = new World(this.scene, q, this.rs.renderer);
     this.rs.setQuality(q);
     this.input = new Input(canvas);
     this.rig = new CameraRig(this.cam, (x, z) => this.groundAt(x, z));
@@ -210,7 +211,7 @@ export class Game {
     this.ui.title(false, false); this.ui.closePanel();
     this.ui.show('hud', true); this.touch.setVisible(true);
     this.mode = 'play';
-    this.rig.targetYaw = this.player.yaw + Math.PI; this.rig.targetPitch = this.area === 'dungeon' ? 1.02 : 0.8; this.rig.targetDist = this.area === 'dungeon' ? 21 : 19;
+    this.rig.targetYaw = this.player.yaw + Math.PI; this.rig.targetPitch = this.area === 'dungeon' ? 1.02 : 0.84; this.rig.targetDist = this.area === 'dungeon' ? 25 : 23;
     this.rig.snap(this.player.pos);
     this.ui.hearts(this.player.hp, this.player.maxHp); this.ui.shells(this.inv.count('shell'));
     this.ui.equip(this.inv, this.touch.enabled);
@@ -342,17 +343,17 @@ export class Game {
     const w = this.world, s = this.scene;
     if (a === 'dungeon') {
       s.background = new THREE.Color(0x05080c); s.fog = new THREE.Fog(0x0a1620, 22, 60);
-      w.hemi.color.set(0x7fa8c8); w.hemi.groundColor.set(0x1a2a30); w.hemi.intensity = 0.55; w.sun.intensity = 0.35; w.sun.color.set(0x9fc8ff);
+      w.hemi.color.set(0x7fa8c8); w.hemi.groundColor.set(0x1a2a30); w.hemi.intensity = 0.55; (s as any).environmentIntensity = 0.08; w.sun.intensity = 0.35; w.sun.color.set(0x9fc8ff);
       w.water.visible = false;
       this.rs.grade.uniforms.uVig.value = 0.5;
     } else {
       s.background = new THREE.Color(0xd6f0ff); s.fog = new THREE.Fog(0xd6f0ff, 95, 260);
-      w.hemi.color.set(0xcfe9ff); w.hemi.groundColor.set(0x7a9a4a); w.hemi.intensity = 1.25; w.sun.intensity = 2.7; w.sun.color.set(0xfff0d6);
+      w.hemi.color.set(0xcfe9ff); w.hemi.groundColor.set(0x7a9a4a); w.hemi.intensity = 1.05; (s as any).environmentIntensity = 0.2; w.sun.intensity = 2.7; w.sun.color.set(0xfff0d6);
       w.water.visible = true;
       this.rs.grade.uniforms.uVig.value = 0.32;
     }
     this.dungeon.group.visible = a === 'dungeon';
-    this.rig.targetPitch = a === 'dungeon' ? 1.02 : 0.8; this.rig.targetDist = a === 'dungeon' ? 21 : 19;
+    this.rig.targetPitch = a === 'dungeon' ? 1.02 : 0.84; this.rig.targetDist = a === 'dungeon' ? 25 : 23;
     void instant;
   }
   private transitionTo(a: 'island' | 'dungeon', x: number, z: number, yaw: number) {
@@ -801,6 +802,8 @@ export class Game {
     this.world.update(dt, this.time, P.pos);
     this.updateDayCycle(dtRaw);
     this.particles.update(dt);
+    // chimney smoke drifting with the wind
+    if (this.area === 'island') for (const c of this.world.chimneys) if (Math.random() < dt * 5 && c.distanceTo(P.pos) < 60) this.particles.emit({ pos: c, vel: new THREE.Vector3(0.5, 1.3, 0.25), count: 1, spread: 0.15, life: 2.8, size: 0.55, grow: 2.4, color: 0xf2eee8, grav: -0.05, drag: 0.25 });
     if (Math.random() < 0.08 && this.area === 'island') this.particles.emit({ pos: P.pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 24, 1 + Math.random() * 3, (Math.random() - 0.5) * 24)), count: 1, spread: 0.3, life: 3, size: 0.09, color: 0xfffbe0, additive: true, grav: -0.05, drag: 0.2 });
 
     // HUD
@@ -843,7 +846,7 @@ export class Game {
     void d;
     this.world.sun.color.setHSL(0.1 - k * 0.03, 0.6 + k * 0.3, 0.88 - k * 0.12);
     this.world.sun.intensity = 2.7 - k * 0.5;
-    this.world.hemi.intensity = 1.25 - k * 0.2;
+    this.world.hemi.intensity = 1.05 - k * 0.2;
     (this.world.water.material as THREE.ShaderMaterial).uniforms.uSun.value.copy(this.world.sunDir);
   }
   updateMarkers() {

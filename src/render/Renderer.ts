@@ -15,7 +15,7 @@ const TiltShift = (horizontal: boolean) => ({
   fragmentShader: `uniform sampler2D tDiffuse; uniform float uFocus, uBand, uAmount; uniform vec2 uRes; varying vec2 vUv;
     void main(){
       float d = abs(vUv.y - uFocus);
-      float b = smoothstep(uBand, uBand + 0.38, d) * uAmount;
+      float b = smoothstep(uBand, uBand + 0.3, d) * uAmount;
       vec2 dir = ${horizontal ? 'vec2(1.0,0.0)' : 'vec2(0.0,1.0)'} / uRes * b;
       vec4 c = texture2D(tDiffuse, vUv) * 0.2270270270;
       c += texture2D(tDiffuse, vUv + dir*1.3846153846) * 0.3162162162;
@@ -26,7 +26,7 @@ const TiltShift = (horizontal: boolean) => ({
     }`,
 });
 const Grade = {
-  uniforms: { tDiffuse: { value: null }, uVig: { value: 0.32 }, uSat: { value: 1.04 }, uWarm: { value: 0.035 }, uFade: { value: 0 }, uFlash: { value: 0 } },
+  uniforms: { tDiffuse: { value: null }, uVig: { value: 0.32 }, uSat: { value: 1.12 }, uWarm: { value: 0.035 }, uFade: { value: 0 }, uFlash: { value: 0 } },
   vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
   fragmentShader: `uniform sampler2D tDiffuse; uniform float uVig, uSat, uWarm, uFade, uFlash; varying vec2 vUv;
     void main(){
@@ -35,7 +35,7 @@ const Grade = {
       c.rgb = mix(vec3(l), c.rgb, uSat);
       c.rgb += vec3(uWarm, uWarm*0.4, -uWarm*0.6) * (1.0 - l);
       // gentle S-curve for a photographed-miniature contrast
-      c.rgb = mix(c.rgb, c.rgb*c.rgb*(3.0-2.0*c.rgb), 0.22);
+      c.rgb = mix(c.rgb, c.rgb*c.rgb*(3.0-2.0*c.rgb), 0.36);
       vec2 q = vUv - 0.5;
       float v = 1.0 - uVig * smoothstep(0.25, 0.85, length(q*vec2(1.0,0.85))*1.25);
       c.rgb *= v;
@@ -55,7 +55,7 @@ export class RenderSystem {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.08;
+    this.renderer.toneMappingExposure = 0.98;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   }
@@ -79,7 +79,7 @@ export class RenderSystem {
       g.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 });
       composer.addPass(g); this.gtao = g;
     }
-    if (q.bloom) { this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.42, 0.55, 0.92); composer.addPass(this.bloom); }
+    if (q.bloom) { this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.32, 0.5, 1.35); composer.addPass(this.bloom); }
     this.tiltH = new ShaderPass(TiltShift(true)); this.tiltV = new ShaderPass(TiltShift(false));
     if (q.tiltShift) { composer.addPass(this.tiltH); composer.addPass(this.tiltV); }
     composer.addPass(new OutputPass());
@@ -101,7 +101,7 @@ export class RenderSystem {
     if (this.fxaa) this.fxaa.material.uniforms['resolution'].value.set(1 / (w * pr), 1 / (h * pr));
     // portrait screens show less vertical depth: widen the band
     const portrait = h > w;
-    for (const p of [this.tiltH, this.tiltV]) { p.uniforms.uBand.value = portrait ? 0.26 : 0.2; p.uniforms.uAmount.value = portrait ? 1.1 : 1.5; }
+    for (const p of [this.tiltH, this.tiltV]) { p.uniforms.uBand.value = portrait ? 0.22 : 0.15; p.uniforms.uAmount.value = portrait ? 1.6 : 2.3; }
   }
   setFocus(screenY: number) { const f = 1 - screenY; for (const p of [this.tiltH, this.tiltV]) p.uniforms.uFocus.value = f; }
   render() { this.composer.render(); }

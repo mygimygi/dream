@@ -4,12 +4,15 @@ import { buildTerrain } from './Terrain';
 import { buildSky, buildWater } from './Water';
 import { CollisionWorld } from './Collision';
 import { Vegetation, Zone } from './Vegetation';
+import { buildCliffDecor } from './CliffDecor';
+import { ChunkedInstances } from './Instancing';
 import * as P from './Props';
 import * as L from './Layout';
 import { QualityProfile } from '../core/Quality';
 import { at, blob, gradient, merge } from './Geo';
 import { toy } from '../render/Materials';
 import { mulberry32 } from '../core/math';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 
 export interface Interactable { id: string; pos: THREE.Vector3; radius: number; prompt: () => string | null; act: () => void; }
 export interface ChestEnt { def: L.ChestDef; obj: THREE.Group & { lid: THREE.Object3D }; opened: boolean; openT: number; collider: any; visible: boolean; }
@@ -33,15 +36,25 @@ export class World {
   signs: { x: number; z: number; text: string }[] = [];
   templeRoof!: THREE.Object3D; private roofK = 1;
 
-  constructor(scene: THREE.Scene, q: QualityProfile) {
+  chimneys: THREE.Vector3[] = [];
+  envTex: THREE.Texture | null = null; cliffs: ChunkedInstances[] = [];
+  constructor(scene: THREE.Scene, q: QualityProfile, renderer?: THREE.WebGLRenderer) {
     this.scene = scene;
     this.hf = new Heightfield();
     scene.background = new THREE.Color(0xd6f0ff);
     scene.fog = new THREE.Fog(0xd6f0ff, 95, 260);
     scene.add(buildSky());
+    if (renderer) {
+      // a soft studio environment gives every toy surface a gentle highlight, like a photographed miniature
+      const pm = new THREE.PMREMGenerator(renderer);
+      this.envTex = pm.fromScene(new RoomEnvironment(), 0.04).texture;
+      scene.environment = this.envTex;
+      (scene as any).environmentIntensity = 0.2;
+      pm.dispose();
+    }
 
     // lighting: warm low sun + sky/ground bounce
-    this.hemi = new THREE.HemisphereLight(0xcfe9ff, 0x7a9a4a, 1.25);
+    this.hemi = new THREE.HemisphereLight(0xcfe9ff, 0x7a9a4a, 1.05);
     scene.add(this.hemi);
     this.sun = new THREE.DirectionalLight(0xfff0d6, 2.7);
     this.sun.castShadow = true;
@@ -68,6 +81,7 @@ export class World {
       const yaw = Math.atan2(L.WELL.x - h.x, L.WELL.z - h.z);
       const g = h.kind === 'plank' ? P.plankHouse(h.seed, h.roof) : P.cottage(h.seed, h.roof);
       place(g, h.x, h.z, yaw, -0.05);
+      if (g.userData.chimney) { const c = (g.userData.chimney as THREE.Vector3).clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw); this.chimneys.push(c.add(g.position)); }
       if (h.kind === 'plank') this.col.box(h.x, h.z, 2.7, 2.2, -yaw, -10, 8);
       else this.col.circle(h.x, h.z, 3.0, -10, 8, 'house');
       ex(h.x, h.z, 5.2);
@@ -92,7 +106,15 @@ export class World {
     });
     // crates & barrels by the bakery/fisher
     [[-9, 35.5, 0.2], [-8, 36.5, 0.7], [17.5, 30, 0.1], [17.6, 31.2, 0.4]].forEach(([x, z, y]) => { place(P.crate(), x, z, y); this.col.box(x, z, 0.55, 0.55, -y, -5, 1); ex(x, z, 1.2); });
-    // flowerbed ring around the well
+    // ---------- village life: garden, planters, benches, barrels ----------
+    { const gp = P.gardenPlot(4.2, 3.2, 5); place(gp, 21, 11, -0.4); this.col.box(21, 11, 2.3, 1.8, 0.4, -5, 0.5); ex(21, 11, 3.5); }
+    { const gp = P.gardenPlot(3.4, 2.6, 8); place(gp, -26, 15, 0.5); this.col.box(-26, 15, 1.9, 1.5, -0.5, -5, 0.5); ex(-26, 15, 3); }
+    for (const h of L.HOUSES) {
+      const yaw = Math.atan2(L.WELL.x - h.x, L.WELL.z - h.z), dx = Math.sin(yaw), dz = Math.cos(yaw);
+      for (const sd of [-1, 1]) { const px = h.x + dx * 3.3 + dz * sd * 1.9, pz = h.z + dz * 3.3 - dx * sd * 1.9; place(P.planter(h.seed + sd), px, pz, yaw); this.col.box(px, pz, 0.6, 0.25, -yaw, -5, 0.7); }
+    }
+    for (const [x, z, yaw] of [[3.2, 24.8, -1.2], [-3.4, 19.2, 2.0]]) { place(P.bench(), x, z, yaw); this.col.box(x, z, 0.9, 0.3, -yaw, -5, 1); ex(x, z, 1.3); }
+    for (const [x, z] of [[-17.2, 30.2], [-16.4, 30.9], [9, 37.5], [-7.8, 39.5]]) { place(P.barrel(), x, z, x); this.col.circle(x, z, 0.45, -5, 1); ex(x, z, 1); }
     // ---------- signs ----------
     for (const s of L.SIGNS) {
       const yaw = Math.atan2(-s.x * 0.0, 1) + 0;
@@ -169,6 +191,7 @@ export class World {
     ex(VILLAGE.x, VILLAGE.z, 7);
 
     this.veg = new Vegetation(this.hf, this.col, props, q, exclude);
+    this.cliffs = buildCliffDecor(this.hf, props, exclude, q.level === 'low');
 
     // ---------- clouds ----------
     this.clouds = new THREE.Group();
@@ -232,6 +255,7 @@ export class World {
     this.sun.position.set(fx + d.x * 70, focus.y + d.y * 70, fz + d.z * 70);
     this.sun.target.position.set(fx, focus.y, fz);
     this.veg.updateLOD(focus);
+    for (const c of this.cliffs) c.updateLOD(focus);
     // lift the temple roof away while the hero stands inside the colonnade
     const inside = Math.hypot(focus.x - L.TEMPLE_POS.x, focus.z - L.TEMPLE_POS.z) < 7;
     this.roofK += ((inside ? 0 : 1) - this.roofK) * (1 - Math.exp(-dt * 6));

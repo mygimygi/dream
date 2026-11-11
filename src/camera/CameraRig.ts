@@ -4,9 +4,9 @@ import { clamp, damp, dampAngle } from '../core/math';
 /** Third-person quarter-view rig: orbit yaw, limited pitch, smooth zoom, look-ahead,
  *  terrain-aware so it never dips into hills, plus trauma-based screen shake. */
 export class CameraRig {
-  yaw = 0; pitch = 0.8; dist = 19; targetDist = 19; targetYaw = 0; targetPitch = 0.8;
+  yaw = 0; pitch = 0.84; dist = 23; targetDist = 23; targetYaw = 0; targetPitch = 0.84;
   target = new THREE.Vector3(); private look = new THREE.Vector3(); private ahead = new THREE.Vector3();
-  trauma = 0; sensitivity = 1; minDist = 10; maxDist = 90;
+  trauma = 0; sensitivity = 1; minDist = 12; maxDist = 90;
   private lift = 0;
   constructor(public cam: THREE.PerspectiveCamera, private groundAt: (x: number, z: number) => number) {}
   orbit(dx: number, dy: number) { this.targetYaw -= dx * 0.005 * this.sensitivity; this.targetPitch = clamp(this.targetPitch + dy * 0.004 * this.sensitivity, 0.42, 1.25); }

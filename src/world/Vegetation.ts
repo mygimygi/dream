@@ -26,13 +26,13 @@ class Spacing {
 export class Vegetation {
   lod: ChunkedInstances[] = [];
   bushes: CuttableBush[] = [];
-  leafMat = toy({ vertexColors: true, roughness: 0.85 }, { wind: 0.35, occlude: true, rim: 0.22, rimColor: 0xf6ffd0, detail: 0.22 });
+  leafMat = toy({ vertexColors: true, roughness: 0.72 }, { wind: 0.35, occlude: true, rim: 0.2, rimColor: 0xf6ffd0, detail: 0.2, gloss: 0.3 });
   trunkMat = toy({ vertexColors: true, roughness: 0.9 }, { occlude: true, rim: 0.1, detail: 0.3 });
   palmLeafMat = toy({ vertexColors: true, roughness: 0.8, side: THREE.DoubleSide }, { wind: 0.4, occlude: true, rim: 0.2 });
-  grassMat = toy({ vertexColors: true, roughness: 1, side: THREE.DoubleSide }, { wind: 2.6, rim: 0.0, upNormal: true });
+  grassMat = toy({ vertexColors: true, roughness: 1, side: THREE.DoubleSide }, { wind: 2.6, rim: 0.0, upNormal: true, gloss: 0 });
   plantMat = toy({ vertexColors: true, roughness: 0.75 }, { wind: 1.2, rim: 0.15 });
-  rockMat = toy({ vertexColors: true, roughness: 0.82 }, { rim: 0.12, detail: 0.4 });
-  bushMat = toy({ vertexColors: true, roughness: 0.85 }, { wind: 0.25, rim: 0.2, rimColor: 0xf6ffd0, detail: 0.2 });
+  rockMat = toy({ vertexColors: true, roughness: 0.6 }, { rim: 0.14, detail: 0.3, gloss: 0.35 });
+  bushMat = toy({ vertexColors: true, roughness: 0.6 }, { wind: 0.25, rim: 0.22, rimColor: 0xf6ffd0, detail: 0.15, gloss: 0.4 });
   glowMat = new THREE.MeshStandardMaterial({ vertexColors: true, emissive: 0x3fd0ff, emissiveIntensity: 0.9, roughness: 0.5 });
 
   constructor(public hf: Heightfield, public col: CollisionWorld, public parent: THREE.Object3D, public q: QualityProfile, public exclude: Zone[]) {

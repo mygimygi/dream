@@ -13,7 +13,7 @@ page.on('pageerror', (e) => errors.push('pageerror: ' + e.message + '\n' + e.sta
 await page.goto(base, { waitUntil: 'load', timeout: 180000 });
 await page.waitForFunction(() => (window.__frames || 0) > 3, null, { timeout: 300000 });
 const G = (fn, arg) => page.evaluate(fn, arg);
-const frames = async (n) => { const f0 = await G(() => window.__frames); await page.waitForFunction((t) => window.__frames >= t, f0 + n, { timeout: 300000 }); };
+const frames = async (n) => { const f0 = await G(() => window.__frames); await page.waitForFunction((t) => window.__frames >= t, f0 + n, { timeout: 1200000 }); };
 const shot = async (name) => { await page.screenshot({ path: `${outDir}/${name}.png`, timeout: 300000 }); console.log('shot', name); };
 const key = async (k, ms = 300) => { await page.keyboard.down(k); await page.waitForTimeout(ms); await page.keyboard.up(k); };
 const scenarios = (await import(process.env.SCEN)).default;

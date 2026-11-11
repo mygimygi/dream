@@ -24,10 +24,18 @@ export interface ToyOpts {
   rimColor?: THREE.ColorRepresentation;
   detail?: number;        // world-space surface mottling
   upNormal?: boolean;     // light thin cards (grass) like the ground they grow from
+  gloss?: number;         // clearcoat amount: the soft sheen of painted plastic toys (0..1)
 }
+/** global switch so low-end devices can drop the clearcoat layer */
+export const TOY = { gloss: 1 };
 
 export function toy(params: THREE.MeshStandardMaterialParameters, o: ToyOpts = {}): THREE.MeshStandardMaterial {
-  const m = new THREE.MeshStandardMaterial({ roughness: 0.78, metalness: 0, ...params });
+  const gloss = (o.gloss ?? 0.45) * TOY.gloss;
+  // the clearcoat layer costs a second specular lobe: only pay for it when the device can afford it
+  const m = gloss > 0
+    ? new THREE.MeshPhysicalMaterial({ roughness: 0.62, metalness: 0, clearcoat: gloss, clearcoatRoughness: 0.3, envMapIntensity: 0.45, ...params })
+    : new THREE.MeshStandardMaterial({ roughness: 0.62, metalness: 0, envMapIntensity: 0.45, ...params });
+  // painted-plastic look: slightly smoother base than before, rim + clearcoat give the toy highlight
   const up = !!o.upNormal; const wind = o.wind ?? 0, occ = !!o.occlude, rim = o.rim ?? 0.18, detail = o.detail ?? 0;
   const rimColor = new THREE.Color(o.rimColor ?? 0xfff1d6);
   m.onBeforeCompile = (sh) => {
@@ -69,7 +77,7 @@ export function toy(params: THREE.MeshStandardMaterialParameters, o: ToyOpts = {
           outgoingLight += uRimColor * pow(fr, 3.0) * ${rim.toFixed(3)} * (0.4 + 0.6*diffuseColor.rgb); }
         #include <opaque_fragment>`);
   };
-  m.customProgramCacheKey = () => `toy_${wind}_${occ}_${rim}_${detail}_${up}`;
+  m.customProgramCacheKey = () => `toy_${wind}_${occ}_${rim}_${detail}_${up}_${gloss > 0}`;
   return m;
 }
 

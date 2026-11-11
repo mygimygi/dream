@@ -7,7 +7,7 @@ export interface CreatureModel { root: THREE.Group; body: THREE.Group; parts: Re
 const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 
 function mk() {
-  const mat = toy({ vertexColors: true, roughness: 0.55 }, { rim: 0.3 });
+  const mat = toy({ vertexColors: true, roughness: 0.45 }, { rim: 0.3, gloss: 0.8 });
   const M = (g: THREE.BufferGeometry, m: THREE.Material = mat) => { const o = new THREE.Mesh(g, m); o.castShadow = true; o.receiveShadow = true; return o; };
   return { mat, M };
 }

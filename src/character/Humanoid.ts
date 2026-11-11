@@ -23,8 +23,8 @@ export interface Rig {
 }
 
 export function buildHumanoid(look: HumanoidLook): Rig {
-  const mat = toy({ vertexColors: true, roughness: 0.62 }, { rim: 0.28, rimColor: 0xfff0dc });
-  const skinMat = toy({ vertexColors: true, roughness: 0.55 }, { rim: 0.35, rimColor: 0xffd8c8 });
+  const mat = toy({ vertexColors: true, roughness: 0.5 }, { rim: 0.3, rimColor: 0xfff0dc, gloss: 0.75 });
+  const skinMat = toy({ vertexColors: true, roughness: 0.45 }, { rim: 0.35, rimColor: 0xffd8c8, gloss: 0.6 });
   const materials = [mat, skinMat];
   const M = (g: THREE.BufferGeometry, m: THREE.Material = mat) => { const o = new THREE.Mesh(g, m); o.castShadow = true; o.receiveShadow = true; return o; };
   const G = () => new THREE.Group();

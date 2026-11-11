@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { buildHumanoid, HumanoidLook } from './Humanoid';
-import { HumanoidAnimator } from '../animation/HumanoidAnimator';
+import { AnimAction, HumanoidAnimator } from '../animation/HumanoidAnimator';
 import { blobShadow } from '../render/BlobShadow';
 import { dampAngle } from '../core/math';
 
@@ -12,6 +12,7 @@ const LOOKS: Record<string, HumanoidLook> = {
   kid: { skin: 0xffd2b0, hair: 0xe0b04a, hairHi: 0xffd870, shirt: 0xffffff, tunic: 0x6ab84a, tunicHi: 0x8ad86a, pants: 0x4a6aa8, boots: 0xc04a3a, gloves: 0xffd2b0, hairStyle: 'bob', hat: 'cap', hatColor: 0xe8584a, scale: 0.8 },
 };
 
+const IDLE: Record<string, AnimAction> = { elder: 'idleElder', baker: 'idleBaker', fisher: 'idleFisher', kid: 'idleKid', smith: 'idleSmith' };
 export class NPC {
   rig; anim: HumanoidAnimator; pos: THREE.Vector3; yaw = 0; homeYaw = 0; talking = false; t = Math.random() * 10;
   constructor(scene: THREE.Scene, public id: string, public name: string, x: number, z: number, y: number) {
@@ -31,6 +32,6 @@ export class NPC {
     this.yaw = dampAngle(this.yaw, target, 5, dt);
     this.rig.root.rotation.y = this.yaw;
     const wave = !this.talking && d < 7 && d > 3 && Math.sin(this.t * 0.7) > 0.6;
-    this.anim.update(dt, { speed: 0, maxSpeed: 1, grounded: true, vy: 0, turnRate: 0, action: this.talking ? 'talk' : wave ? 'wave' : 'none', actionT: this.t, combo: 0, landT: 1, dist: 0 });
+    this.anim.update(dt, { speed: 0, maxSpeed: 1, grounded: true, vy: 0, turnRate: 0, action: this.talking ? 'talk' : wave ? 'wave' : IDLE[this.id] ?? 'none', actionT: this.t, combo: 0, landT: 1, dist: 0 });
   }
 }

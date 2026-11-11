@@ -28,7 +28,7 @@ export class Player {
   action: AnimAction = 'none'; actionT = 0; combo = 0; queued = false; swingId = 0;
   private sword: THREE.Object3D; private shield: THREE.Object3D; private shieldPiv = new THREE.Group();
   private held: THREE.Object3D | null = null; heldT = 0;
-  guardW = 0; frozen = false; lastSafe = new THREE.Vector3(); private stepAcc = 0; inWater = false;
+  guardW = 0; frozen = false; lookAhead = 0; lastSafe = new THREE.Vector3(); private stepAcc = 0; inWater = false;
   shadow: THREE.Mesh;
   private knock = new THREE.Vector3();
   onLand?: (speed: number) => void;
@@ -196,10 +196,11 @@ export class Player {
       this.vel.z = damp(this.vel.z, target.z, (a / maxSpeed) * 2.2 * k, dt);
       if (mag > 0.05 && this.action !== 'guard') {
         const ty = Math.atan2(wish.x, wish.z);
+        this.lookAhead = angleDiff(this.yaw, ty);
         const prev = this.yaw;
         this.yaw = dampAngle(this.yaw, ty, 14, dt);
         this.turnRate = damp(this.turnRate, angleDiff(prev, this.yaw) / dt, 10, dt);
-      } else this.turnRate = damp(this.turnRate, 0, 8, dt);
+      } else { this.turnRate = damp(this.turnRate, 0, 8, dt); this.lookAhead = 0; }
     } else {
       // attack lunge decays; other locked states brake
       this.vel.x = damp(this.vel.x, 0, this.isAttacking() ? 9 : 12, dt);
@@ -273,7 +274,7 @@ export class Player {
     this.shieldPiv.position.set(-0.08 * (1 - w) - 0.2 * w, 0.2 + 0.05 * w, -0.27 * (1 - w) + 0.42 * w);
     this.shieldPiv.rotation.set(0, Math.PI * (1 - w) + 0.15 * w, 0);
     const spd = Math.hypot(this.vel.x, this.vel.z);
-    this.anim.update(dt, { speed: spd, maxSpeed: RUN, grounded: this.grounded, vy: this.vy, turnRate: this.turnRate, action: this.action, actionT: this.actionT, combo: this.combo, landT: this.landT, dist: this.dist, guardW: this.guardW });
+    this.anim.update(dt, { speed: spd, maxSpeed: RUN, grounded: this.grounded, vy: this.vy, turnRate: this.turnRate, action: this.action, actionT: this.actionT, combo: this.combo, landT: this.landT, dist: this.dist, guardW: this.guardW, lookAhead: this.lookAhead });
     // blob contact shadow (soft AO under the feet)
     const sg = env.groundAt(this.pos.x, this.pos.z, this.pos.y + 0.2);
     this.shadow.position.set(this.pos.x, sg + 0.04, this.pos.z);

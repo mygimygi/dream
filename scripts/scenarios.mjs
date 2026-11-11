@@ -7,7 +7,7 @@ const base = {
     await shot('start_play');
   },
   async tour({ G, frames, shot, page }) {
-    await page.click('[data-m=new]'); await frames(3);
+    await page.click('[data-m=new]'); await frames(3); await page.click('[data-cr=done]'); await frames(3);
     await G(() => { window.__game.ui.advance(); window.__game.ui.advance(); });
     const spots = JSON.parse(process.env.SPOTS || '[]');
     for (const [name, x, z, yaw, d, p] of spots) {

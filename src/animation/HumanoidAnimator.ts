@@ -3,10 +3,11 @@ import { Rig } from '../character/Humanoid';
 import { clamp, damp, smoothstep } from '../core/math';
 import { ATTACKS, JUMP_ATTACK, ROLL_TIME } from '../combat/AttackTable';
 
-export type AnimAction = 'none' | 'attack' | 'jumpAttack' | 'roll' | 'guard' | 'hit' | 'dead' | 'itemGet' | 'interact' | 'talk' | 'wave' | 'sit';
+export type AnimAction = 'none' | 'idleElder' | 'idleBaker' | 'idleFisher' | 'idleKid' | 'idleSmith' | 'attack' | 'jumpAttack' | 'roll' | 'guard' | 'hit' | 'dead' | 'itemGet' | 'interact' | 'talk' | 'wave' | 'sit';
 export interface AnimInput {
   speed: number; maxSpeed: number; grounded: boolean; vy: number; turnRate: number;
   action: AnimAction; actionT: number; combo: number; landT: number; dist: number; guardW?: number;
+  lookAhead?: number; // angle between facing and desired direction: head/torso turn first
 }
 
 type J = { x: number; y: number; z: number };
@@ -64,6 +65,19 @@ export class HumanoidAnimator {
       this.add('hips', 0, -Math.sin(ph) * 0.1 * moveW, 0);
       hipsY += Math.abs(Math.cos(ph)) * (0.035 + 0.05 * runW) * moveW - 0.03 * runW;
       this.add('head', -0.08 * runW, 0, s.turnRate * 0.05);
+      // weight shift: hips roll over the planted foot, shoulders counter-roll
+      this.add('hips', 0, 0, Math.sin(ph) * 0.07 * moveW);
+      this.add('torso', 0, 0, -Math.sin(ph) * 0.05 * moveW);
+    } else if (s.action === 'none' && s.grounded) {
+      // idle fidget: every few seconds glance around, shift weight
+      const f = Math.sin(this.time * 0.37) * Math.sin(this.time * 0.23);
+      this.add('head', 0, f > 0.35 ? Math.sin(this.time * 1.3) * 0.55 : 0, 0);
+      this.add('hips', 0, 0, Math.sin(this.time * 0.5) * 0.03);
+    }
+    // anticipation: the head (then the chest) turns toward where we are about to go
+    const la = Math.max(-0.9, Math.min(0.9, s.lookAhead ?? 0));
+    this.add('head', 0, la * 0.7, 0); this.add('torso', 0, la * 0.25, 0);
+    {
     }
     // ---- airborne ----
     if (!s.grounded) {
@@ -180,6 +194,49 @@ export class HumanoidAnimator {
       }
       case 'wave': {
         this.set('armR', -2.6, 0, 0.4 + Math.sin(this.time * 9) * 0.35); this.set('foreR', -0.4);
+        break;
+      }
+      case 'idleElder': {
+        // hands clasped behind the back, slow nods
+        this.set('armL', 0.55, 0, -0.25); this.set('armR', 0.55, 0, 0.25); this.set('foreL', -0.9); this.set('foreR', -0.9);
+        this.set('torso', 0.18, 0, 0); this.set('head', 0.1 + Math.max(0, Math.sin(this.time * 1.4)) * 0.18, Math.sin(this.time * 0.4) * 0.3, 0);
+        hipsY = 0.57;
+        break;
+      }
+      case 'idleBaker': {
+        // kneading dough on an invisible counter
+        const k = Math.sin(this.time * 4.5);
+        this.set('armL', -1.0 + k * 0.25, 0.25, -0.1); this.set('armR', -1.0 - k * 0.25, -0.25, 0.1);
+        this.set('foreL', -0.6); this.set('foreR', -0.6); this.set('handR', 0);
+        this.set('torso', 0.22 + Math.abs(k) * 0.06, 0, 0); this.set('head', 0.15, 0, k * 0.04);
+        hipsY = 0.6 - Math.abs(k) * 0.02;
+        break;
+      }
+      case 'idleFisher': {
+        // shading the eyes and scanning the sea, then a lazy stretch
+        const c = (this.time % 9) / 9;
+        if (c < 0.6) { this.set('armR', -2.3, -0.4, 0.2); this.set('foreR', -1.9); this.set('head', -0.15, Math.sin(this.time * 0.6) * 0.5, 0); }
+        else { const k = Math.sin((c - 0.6) / 0.4 * Math.PI); this.set('armL', -2.9 * k, 0, -0.3 * k); this.set('armR', -2.9 * k, 0, 0.3 * k); this.set('torso', -0.2 * k); this.set('head', -0.3 * k); }
+        break;
+      }
+      case 'idleKid': {
+        // can't stand still: little hops and swinging arms
+        const k = Math.abs(Math.sin(this.time * 5));
+        hipsY = 0.6 + k * 0.1;
+        this.set('armL', Math.sin(this.time * 5) * 0.8, 0, -0.4); this.set('armR', -Math.sin(this.time * 5) * 0.8, 0, 0.4);
+        this.set('legL', -k * 0.4); this.set('shinL', k * 0.8); this.set('legR', -k * 0.3); this.set('shinR', k * 0.7);
+        this.set('head', 0, Math.sin(this.time * 2) * 0.3, Math.sin(this.time * 3) * 0.1);
+        break;
+      }
+      case 'idleSmith': {
+        // hammer rhythm: slow lift, fast strike
+        const c = (this.time * 0.9) % 1;
+        const lift = c < 0.7 ? c / 0.7 : 1 - (c - 0.7) / 0.3;
+        this.set('armR', -0.8 - lift * 1.9, -0.2, 0.25); this.set('foreR', -0.6 - lift * 0.5); this.set('handR', 0.6);
+        this.set('armL', -0.9, 0.3, -0.1); this.set('foreL', -0.8);
+        this.set('torso', 0.3 - lift * 0.15, 0, 0); this.set('head', 0.25, 0, 0);
+        this.set('legL', -0.25, 0, -0.08); this.set('legR', 0.2, 0, 0.08);
+        lambda = c > 0.7 ? 30 : 12;
         break;
       }
       case 'sit': { this.set('legL', -1.5); this.set('legR', -1.5); this.set('shinL', 1.5); this.set('shinR', 1.5); hipsY = 0.32; break; }
