@@ -20,7 +20,7 @@ export function buildWater(hf: Heightfield, sunDir: THREE.Vector3): THREE.Mesh {
     transparent: true, fog: true, depthWrite: false,
     uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
       uHeight: { value: tex }, uHalf: { value: WORLD_HALF }, uSun: { value: sunDir.clone() }, uTime: U.uTime,
-      uShallow: { value: new THREE.Color(0x7fe6d6) }, uMid: { value: new THREE.Color(0x34b6cf) }, uDeep: { value: new THREE.Color(0x1d6ba8) },
+      uShallow: { value: new THREE.Color(0x8ef0de) }, uMid: { value: new THREE.Color(0x2fb4c8) }, uDeep: { value: new THREE.Color(0x1a62a0) },
       uSky: { value: new THREE.Color(0xcfeeff) }, uSunCol: { value: new THREE.Color(0xfff2d0) },
     }]),
     vertexShader: /* glsl */ `

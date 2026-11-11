@@ -10,7 +10,7 @@ const PAL = {
   sand: C(0xf4e2ad), sandWet: C(0xd9bf86), seabed: C(0x9cc9a6), cliff: C(0xdcb886), cliffDark: C(0xb38657),
 };
 
-export function terrainColor(hf: Heightfield, x: number, z: number, h: number, ny: number, out: THREE.Color) {
+export function terrainColor(hf: Heightfield, x: number, z: number, h: number, ny: number, out: THREE.Color, withPath = true) {
   const region = hf.regionAt(x, z);
   const path = hf.pathAt(x, z), land = hf.landAt(x, z);
   const n1 = fbm(x * 0.06, z * 0.06, 3) * 0.5 + 0.5;
@@ -30,7 +30,7 @@ export function terrainColor(hf: Heightfield, x: number, z: number, h: number, n
   }
   if (h < -0.1) out.copy(PAL.sandWet).lerp(PAL.seabed, smoothstep(-0.1, -3, h));
   // path
-  if (path > 0.01) {
+  if (withPath && path > 0.01) {
     const p = PAL.path.clone().lerp(PAL.pathDark, clamp(0.5 + noise2(x * 0.4, z * 0.4) * 0.6) * 0.6);
     out.lerp(p, smoothstep(0.05, 0.75, path));
   }
@@ -45,7 +45,7 @@ export function terrainColor(hf: Heightfield, x: number, z: number, h: number, n
 
 export function buildTerrain(hf: Heightfield): THREE.Mesh {
   const n = hf.n;
-  const pos = new Float32Array(n * n * 3), nor = new Float32Array(n * n * 3), col = new Float32Array(n * n * 3);
+  const pos = new Float32Array(n * n * 3), nor = new Float32Array(n * n * 3), col = new Float32Array(n * n * 3), pathA = new Float32Array(n * n);
   const H = hf.heights;
   const tmp = new THREE.Color();
   for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
@@ -55,7 +55,8 @@ export function buildTerrain(hf: Heightfield): THREE.Mesh {
     const hd = H[Math.max(0, j - 1) * n + i], hu = H[Math.min(n - 1, j + 1) * n + i];
     const v = new THREE.Vector3(hl - hr, 2 * CELL, hd - hu).normalize();
     nor[k * 3] = v.x; nor[k * 3 + 1] = v.y; nor[k * 3 + 2] = v.z;
-    terrainColor(hf, x, z, h, v.y, tmp);
+    terrainColor(hf, x, z, h, v.y, tmp, false);
+    pathA[k] = hf.path[k] * smoothstep(0.82, 0.92, v.y) * (h > 0.4 ? 1 : 0);
     // cavity AO: darken where surrounded by higher ground (cliff feet, ditches)
     let avg = 0, cnt = 0;
     for (let dj = -4; dj <= 4; dj += 2) for (let di = -4; di <= 4; di += 2) {
@@ -76,6 +77,7 @@ export function buildTerrain(hf: Heightfield): THREE.Mesh {
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
   g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  g.setAttribute('aPath', new THREE.BufferAttribute(pathA, 1));
   g.setIndex(new THREE.BufferAttribute(idx, 1));
   g.computeBoundingSphere(); g.computeBoundingBox();
 
@@ -83,10 +85,10 @@ export function buildTerrain(hf: Heightfield): THREE.Mesh {
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uTime = U.uTime;
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vWPos; varying vec3 vWN;')
-      .replace('#include <project_vertex>', '#include <project_vertex>\n vWPos = (modelMatrix*vec4(transformed,1.0)).xyz; vWN = normal;');
+      .replace('#include <common>', '#include <common>\nattribute float aPath; varying float vPath; varying vec3 vWPos; varying vec3 vWN;')
+      .replace('#include <project_vertex>', '#include <project_vertex>\n vWPos = (modelMatrix*vec4(transformed,1.0)).xyz; vWN = normal; vPath = aPath;');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', `#include <common>\nvarying vec3 vWPos; varying vec3 vWN; uniform float uTime;\n${GLSL_NOISE}`)
+      .replace('#include <common>', `#include <common>\nvarying float vPath; varying vec3 vWPos; varying vec3 vWN; uniform float uTime;\n${GLSL_NOISE}`)
       .replace('#include <color_fragment>', `#include <color_fragment>
       {
         float steep = smoothstep(0.84, 0.62, vWN.y);
@@ -96,6 +98,26 @@ export function buildTerrain(hf: Heightfield): THREE.Mesh {
         float spk = step(0.93, h21(floor(vWPos.xz*6.0)));
         vec3 grassTint = mix(vec3(0.92,1.0,0.86), vec3(1.08,1.04,0.88), big);
         vec3 g = diffuseColor.rgb * grassTint * (0.93 + 0.12*fine) * (1.0 + 0.06*spk);
+        // lush/sparse grass patches: darker dense clumps and lighter worn spots
+        float dens = fbm2(vWPos.xz*0.16 + 7.0);
+        g *= mix(0.86, 1.07, smoothstep(0.3, 0.7, dens));
+        g = mix(g, g*vec3(0.92,1.02,0.86), smoothstep(0.62,0.8, vnoise(vWPos.xz*0.5)));
+        // dirt path with an irregular, grass-nibbled edge, warm earth tones, ruts and gravel
+        float edgeN = (fbm2(vWPos.xz*0.9) - 0.5) * 0.55 + (vnoise(vWPos.xz*4.0) - 0.5) * 0.18;
+        float pm = smoothstep(0.38, 0.52, vPath + edgeN);
+        if (pm > 0.0) {
+          float t1 = fbm2(vWPos.xz*0.45), t2 = vnoise(vWPos.xz*3.2);
+          vec3 dirt = mix(vec3(0.34,0.17,0.07), vec3(0.56,0.32,0.14), t1); // linear-space warm earth
+          dirt *= 0.9 + 0.14*t2;
+          float rut = smoothstep(0.55, 0.9, vPath) * (0.5 + 0.5*sin(vWPos.x*1.7 + vWPos.z*1.3 + fbm2(vWPos.xz*0.3)*4.0));
+          dirt *= 1.0 - 0.07*rut;
+          float grav = step(0.955, h21(floor(vWPos.xz*8.0)));
+          dirt = mix(dirt, vec3(0.52,0.44,0.34), grav*0.7);
+          // a darker damp rim where grass meets soil
+          float rim = smoothstep(0.38, 0.46, vPath + edgeN) * (1.0 - smoothstep(0.46, 0.6, vPath + edgeN));
+          dirt *= 1.0 - 0.18*rim;
+          g = mix(g, dirt, pm);
+        }
         // cliff strata & pebbles
         float strata = fract(vWPos.y*0.85 + fbm2(vWPos.xz*0.25)*0.9);
         float band = smoothstep(0.0,0.08,strata)*smoothstep(1.0,0.82,strata);

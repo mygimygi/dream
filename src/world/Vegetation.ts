@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { Heightfield, WORLD_HALF } from './Heightfield';
 import { CollisionWorld, Collider } from './Collision';
 import { ChunkedInstances, Inst, RemovableInstances, mat4 } from './Instancing';
-import { bushModel, flowerModel, grassTuft, mushroomModel, palmTree, pineTree, rockModel, roundTree, TreeModel } from './PlantModels';
+import { bellFlower, bushModel, cloverClump, daisyCluster, flowerModel, grassTuft, mushroomModel, palmTree, pineTree, rockModel, roundTree, TreeModel } from './PlantModels';
 import { toy } from '../render/Materials';
 import { fbm, mulberry32, noise2 } from '../core/math';
 import { QualityProfile } from '../core/Quality';
@@ -26,13 +26,13 @@ class Spacing {
 export class Vegetation {
   lod: ChunkedInstances[] = [];
   bushes: CuttableBush[] = [];
-  leafMat = toy({ vertexColors: true, roughness: 0.72 }, { wind: 0.35, occlude: true, rim: 0.2, rimColor: 0xf6ffd0, detail: 0.2, gloss: 0.3 });
-  trunkMat = toy({ vertexColors: true, roughness: 0.9 }, { occlude: true, rim: 0.1, detail: 0.3 });
+  leafMat = toy({ vertexColors: true, roughness: 0.78 }, { wind: 0.35, occlude: true, rim: 0.22, rimColor: 0xf6ffd0, detail: 0.2, gloss: 0.12 });
+  trunkMat = toy({ vertexColors: true, roughness: 0.9 }, { occlude: true, rim: 0.1, detail: 0.3, gloss: 0 });
   palmLeafMat = toy({ vertexColors: true, roughness: 0.8, side: THREE.DoubleSide }, { wind: 0.4, occlude: true, rim: 0.2 });
   grassMat = toy({ vertexColors: true, roughness: 1, side: THREE.DoubleSide }, { wind: 2.6, rim: 0.0, upNormal: true, gloss: 0 });
-  plantMat = toy({ vertexColors: true, roughness: 0.75 }, { wind: 1.2, rim: 0.15 });
-  rockMat = toy({ vertexColors: true, roughness: 0.6 }, { rim: 0.14, detail: 0.3, gloss: 0.35 });
-  bushMat = toy({ vertexColors: true, roughness: 0.6 }, { wind: 0.25, rim: 0.22, rimColor: 0xf6ffd0, detail: 0.15, gloss: 0.4 });
+  plantMat = toy({ vertexColors: true, roughness: 0.6 }, { wind: 1.2, rim: 0.18, gloss: 0.25 });
+  rockMat = toy({ vertexColors: true, roughness: 0.88 }, { rim: 0.12, detail: 0.3, gloss: 0 });
+  bushMat = toy({ vertexColors: true, roughness: 0.78 }, { wind: 0.25, rim: 0.22, rimColor: 0xf6ffd0, detail: 0.15, gloss: 0.12 });
   glowMat = new THREE.MeshStandardMaterial({ vertexColors: true, emissive: 0x3fd0ff, emissiveIntensity: 0.9, roughness: 0.5 });
 
   constructor(public hf: Heightfield, public col: CollisionWorld, public parent: THREE.Object3D, public q: QualityProfile, public exclude: Zone[]) {
@@ -46,7 +46,7 @@ export class Vegetation {
     };
 
     // ---------- trees ----------
-    const roundVariants: TreeModel[] = [0, 1, 2, 3].map((i) => roundTree(11 + i * 17));
+    const roundVariants: TreeModel[] = [roundTree(11), roundTree(28), roundTree(45, [0x2f6b2b, 0x5aa83a, 0x8fd04c], 0xe8483a), roundTree(62, [0x8a4a6a, 0xe890b0, 0xffd6e4])];
     const forestVariants: TreeModel[] = [0, 1, 2].map((i) => roundTree(101 + i * 13, [0x1f5a2a, 0x3f8f34, 0x6cb540]));
     const pineVariants = [0, 1, 2].map((i) => pineTree(51 + i * 7));
     const palmVariants = [0, 1].map((i) => palmTree(71 + i * 5));
@@ -89,8 +89,8 @@ export class Vegetation {
     }));
 
     // ---------- rocks ----------
-    const rockGeos = [0, 1, 2, 3].map((i) => rockModel(5 + i * 9, false));
-    const mossGeos = [0, 1].map((i) => rockModel(80 + i * 9, true));
+    const rockGeos = [rockModel(5, false, 'round'), rockModel(14, false, 'flat'), rockModel(23, false, 'angular'), rockModel(32, false, 'stack')];
+    const mossGeos = [rockModel(80, true, 'round'), rockModel(89, true, 'boulder')];
     const rInst: Inst[][] = [[], [], [], [], [], []];
     for (let i = 0; i < 9000; i++) {
       const x = (rnd() * 2 - 1) * WORLD_HALF, z = (rnd() * 2 - 1) * WORLD_HALF;
@@ -156,7 +156,7 @@ export class Vegetation {
     });
 
     // ---------- grass ----------
-    const tufts = [grassTuft(1), grassTuft(2), grassTuft(3)];
+    const tufts = [grassTuft(1), grassTuft(2), cloverClump(3)];
     const gInst: Inst[][] = [[], [], []];
     let placed = 0;
     for (let i = 0; i < q.grassCount * 6 && placed < q.grassCount; i++) {
@@ -176,15 +176,15 @@ export class Vegetation {
     tufts.forEach((g, v) => this.lod.push(new ChunkedInstances(g, this.grassMat, gInst[v], parent, { cast: false, chunk: 24, maxDist: q.level === 'low' ? 45 : 65 })));
 
     // ---------- flowers ----------
-    const flowerGeos = [flowerModel(0xffffff, 0xffd64a, 1), flowerModel(0xffd84a, 0xf08a3a, 2), flowerModel(0xf47aa0, 0xfff0a0, 3), flowerModel(0x8ab8ff, 0xffffff, 4)];
-    const fInst: Inst[][] = [[], [], [], []];
+    const flowerGeos = [flowerModel(0xffffff, 0xffd64a, 1), flowerModel(0xffd84a, 0xf08a3a, 2), flowerModel(0xf47aa0, 0xfff0a0, 3), flowerModel(0x8ab8ff, 0xffffff, 4), daisyCluster(5), bellFlower(0x9a7ae0, 6)];
+    const fInst: Inst[][] = [[], [], [], [], [], []];
     placed = 0;
     for (let i = 0; i < q.flowerCount * 12 && placed < q.flowerCount; i++) {
       const x = (rnd() * 2 - 1) * WORLD_HALF * 0.85, z = (rnd() * 2 - 1) * WORLD_HALF * 0.85;
       const patch = noise2(x * 0.08 + 31, z * 0.08);
       if (patch < 0.35) continue;
       if (!grassy(x, z) || excluded(x, z, -2)) continue;
-      const v = Math.floor((noise2(x * 0.02, z * 0.02) * 0.5 + 0.5) * 3.99) % 4;
+      const v = Math.floor((noise2(x * 0.02, z * 0.02) * 0.5 + 0.5) * 5.99) % 6;
       fInst[v].push({ m: mat4(x, hf.height(x, z) - 0.02, z, rnd() * 6.28, 0.9 + rnd() * 0.6) });
       placed++;
     }

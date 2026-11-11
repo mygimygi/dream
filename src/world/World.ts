@@ -61,7 +61,7 @@ export class World {
     this.sun.shadow.mapSize.set(q.shadowSize, q.shadowSize);
     const sc = this.sun.shadow.camera;
     sc.left = -34; sc.right = 34; sc.top = 34; sc.bottom = -34; sc.near = 1; sc.far = 160;
-    this.sun.shadow.bias = -0.0006; this.sun.shadow.normalBias = 0.035; this.sun.shadow.radius = 4;
+    this.sun.shadow.bias = -0.0006; this.sun.shadow.normalBias = 0.035; this.sun.shadow.radius = 4; this.sun.shadow.intensity = 0.82; // softer, never pitch-black shadows
     scene.add(this.sun); scene.add(this.sun.target);
     const fill = new THREE.DirectionalLight(0xbfd8ff, 0.45); fill.position.set(40, 30, -60); scene.add(fill);
 
@@ -114,6 +114,13 @@ export class World {
       for (const sd of [-1, 1]) { const px = h.x + dx * 3.3 + dz * sd * 1.9, pz = h.z + dz * 3.3 - dx * sd * 1.9; place(P.planter(h.seed + sd), px, pz, yaw); this.col.box(px, pz, 0.6, 0.25, -yaw, -5, 0.7); }
     }
     for (const [x, z, yaw] of [[3.2, 24.8, -1.2], [-3.4, 19.2, 2.0]]) { place(P.bench(), x, z, yaw); this.col.box(x, z, 0.9, 0.3, -yaw, -5, 1); ex(x, z, 1.3); }
+    L.HOUSES.forEach((h, i) => {
+      const yaw = Math.atan2(L.WELL.x - h.x, L.WELL.z - h.z), dx = Math.sin(yaw), dz = Math.cos(yaw);
+      const mx = h.x + dx * 5.4 - dz * 2.6, mz = h.z + dz * 5.4 + dx * 2.6;
+      place(P.mailbox([0xd0503a, 0x3a8ac8, 0x5aa83a, 0xe8a23a, 0x8a5ab8][i % 5]), mx, mz, yaw); this.col.circle(mx, mz, 0.25, -5, 1.5);
+    });
+    { place(P.woodpile(), 8.5, 9.5, 0.9); this.col.box(8.5, 9.5, 0.7, 0.6, -0.9, -5, 1); ex(8.5, 9.5, 1.5); }
+    for (const [x, z, c] of [[-10.6, 36.2, 0xe8483a], [-9.4, 36.6, 0xf2c94c], [16.8, 29.2, 0x6ab84a]]) { place(P.basket(c), x, z, x); this.col.circle(x, z, 0.35, -5, 0.6); ex(x, z, 0.8); }
     for (const [x, z] of [[-17.2, 30.2], [-16.4, 30.9], [9, 37.5], [-7.8, 39.5]]) { place(P.barrel(), x, z, x); this.col.circle(x, z, 0.45, -5, 1); ex(x, z, 1); }
     // ---------- signs ----------
     for (const s of L.SIGNS) {

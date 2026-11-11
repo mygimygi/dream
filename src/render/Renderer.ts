@@ -15,7 +15,7 @@ const TiltShift = (horizontal: boolean) => ({
   fragmentShader: `uniform sampler2D tDiffuse; uniform float uFocus, uBand, uAmount; uniform vec2 uRes; varying vec2 vUv;
     void main(){
       float d = abs(vUv.y - uFocus);
-      float b = smoothstep(uBand, uBand + 0.3, d) * uAmount;
+      float b = smoothstep(uBand, uBand + 0.32, d) * uAmount;
       vec2 dir = ${horizontal ? 'vec2(1.0,0.0)' : 'vec2(0.0,1.0)'} / uRes * b;
       vec4 c = texture2D(tDiffuse, vUv) * 0.2270270270;
       c += texture2D(tDiffuse, vUv + dir*1.3846153846) * 0.3162162162;
@@ -101,7 +101,7 @@ export class RenderSystem {
     if (this.fxaa) this.fxaa.material.uniforms['resolution'].value.set(1 / (w * pr), 1 / (h * pr));
     // portrait screens show less vertical depth: widen the band
     const portrait = h > w;
-    for (const p of [this.tiltH, this.tiltV]) { p.uniforms.uBand.value = portrait ? 0.22 : 0.15; p.uniforms.uAmount.value = portrait ? 1.6 : 2.3; }
+    for (const p of [this.tiltH, this.tiltV]) { p.uniforms.uBand.value = portrait ? 0.27 : 0.22; p.uniforms.uAmount.value = portrait ? 1.0 : 1.35; }
   }
   setFocus(screenY: number) { const f = 1 - screenY; for (const p of [this.tiltH, this.tiltV]) p.uniforms.uFocus.value = f; }
   render() { this.composer.render(); }

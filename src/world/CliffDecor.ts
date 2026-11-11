@@ -11,8 +11,8 @@ import { Zone } from './Vegetation';
 export function buildCliffDecor(hf: Heightfield, parent: THREE.Object3D, exclude: Zone[], low = false): ChunkedInstances[] {
   const out: ChunkedInstances[] = [];
   const r = mulberry32(77);
-  const stoneMat = toy({ vertexColors: true, roughness: 0.55 }, { rim: 0.14, detail: 0.25, gloss: 0.35 });
-  const lipMat = toy({ vertexColors: true, roughness: 0.6 }, { rim: 0.2, rimColor: 0xf6ffd0, gloss: 0.3, wind: 0 });
+  const stoneMat = toy({ vertexColors: true, roughness: 0.88 }, { rim: 0.12, detail: 0.28, gloss: 0 });
+  const lipMat = toy({ vertexColors: true, roughness: 0.8 }, { rim: 0.2, rimColor: 0xf6ffd0, gloss: 0.08, wind: 0 });
   // unit stone: 1 x 1 x 1 rounded block with lighter top face
   const stoneGeos = [0, 1, 2].map((i) => {
     const g = rbox(1, 1, 1, 0.22 + i * 0.04, 2);

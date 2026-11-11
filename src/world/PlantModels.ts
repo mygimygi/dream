@@ -16,7 +16,7 @@ function bark(g: THREE.BufferGeometry, base = 0x8a5a36, dark = 0x5e3a22) {
 }
 
 /** Broadleaf: short curvy trunk with root flare and a lumpy multi-clump crown. */
-export function roundTree(seed: number, palette: [number, number, number] = [0x2f6b2b, 0x5aa83a, 0x8fd04c]): TreeModel {
+export function roundTree(seed: number, palette: [number, number, number] = [0x2f6b2b, 0x5aa83a, 0x8fd04c], fruit = 0): TreeModel {
   const r = mulberry32(seed);
   const lean = (r() - 0.5) * 0.3;
   const trunkH = 2.0 + r() * 0.8;
@@ -54,6 +54,14 @@ export function roundTree(seed: number, palette: [number, number, number] = [0x2
   for (let i = 0; i < pos.count; i++) {
     const k = 0.5 + 0.5 * Math.sin(pos.getX(i) * 2.1 + pos.getZ(i) * 1.7 + seed);
     col.setXYZ(i, col.getX(i) * (0.9 + 0.1 * k) + mid.r * 0.05, col.getY(i) * (0.9 + 0.1 * k) + mid.g * 0.05, col.getZ(i) * (0.9 + 0.1 * k));
+  }
+  if (fruit) {
+    // fruit/blossom dots tucked into the crown surface (part of the trunk mesh so they don't sway apart)
+    for (let i = 0; i < 14; i++) {
+      const a = r() * Math.PI * 2, e = (r() - 0.2) * 1.0;
+      const d = R * (0.95 + r() * 0.1);
+      parts.push(colorize(at(sphere(0.13 + r() * 0.05, 10, 8), center.x + Math.cos(a) * Math.cos(e) * d, center.y + Math.sin(e) * d * 0.8, center.z + Math.sin(a) * Math.cos(e) * d), fruit));
+    }
   }
   return { trunk: merge(parts), leaves: lg, radius: 0.55, height: crownY + R };
 }
@@ -144,16 +152,16 @@ export function bushModel(seed: number, palette: [number, number] = [0x2f7a2e, 0
 export function grassTuft(seed: number): THREE.BufferGeometry {
   const r = mulberry32(seed);
   const pos: number[] = [], col: number[] = [];
-  const base = new THREE.Color(0x5aa437), tip = new THREE.Color(0x98cc52), c = new THREE.Color();
-  const blades = 8;
+  const base = new THREE.Color(0x4f9a33), tip = new THREE.Color(0x8cc650), c = new THREE.Color();
+  const blades = 11;
   for (let b = 0; b < blades; b++) {
-    const a = r() * Math.PI * 2, lean = 0.25 + r() * 0.35, h = 0.12 + r() * 0.12, w = 0.05 + r() * 0.025;
+    const a = r() * Math.PI * 2, lean = 0.3 + r() * 0.35, h = 0.11 + r() * 0.11, w = 0.06 + r() * 0.03;
     const ox = (r() - 0.5) * 0.4, oz = (r() - 0.5) * 0.4;
     const dx = Math.cos(a), dz = Math.sin(a), px = -dz, pz = dx;
-    const seg = 3;
+    const seg = 4;
     const pts: number[][] = [];
     for (let s = 0; s <= seg; s++) {
-      const t = s / seg, ww = w * (1 - t);
+      const t = s / seg, ww = w * Math.sin(Math.PI * (0.18 + t * 0.8)) * (t === 1 ? 0.25 : 1);
       const bx = ox + dx * lean * t * t * h * 2, bz = oz + dz * lean * t * t * h * 2, by = t * h;
       pts.push([bx - px * ww, by, bz - pz * ww, bx + px * ww, by, bz + pz * ww, t]);
     }
@@ -173,6 +181,46 @@ export function grassTuft(seed: number): THREE.BufferGeometry {
   return g;
 }
 
+/** Clover / low leafy ground cover: overlapping rounded leaves, reads as soft volume instead of blades. */
+export function cloverClump(seed: number): THREE.BufferGeometry {
+  const r = mulberry32(seed);
+  const parts: THREE.BufferGeometry[] = [];
+  for (let i = 0; i < 9; i++) {
+    const a = r() * Math.PI * 2, d = r() * 0.22, y = 0.05 + r() * 0.06;
+    for (let k = 0; k < 3; k++) {
+      const b = a + (k / 3) * Math.PI * 2;
+      parts.push(at(sphere(0.055, 8, 6), Math.cos(a) * d + Math.cos(b) * 0.05, y, Math.sin(a) * d + Math.sin(b) * 0.05, 0, -b, 0, [1.2, 0.35, 0.9]));
+    }
+  }
+  const g = merge(parts);
+  gradient(g, 0x3f8a2c, 0x7cbf48, 0.0, 0.12);
+  const n = g.attributes.normal; for (let i = 0; i < n.count; i++) n.setXYZ(i, 0, 1, 0);
+  return g;
+}
+/** Bell-flower spray: a few drooping cups on arching stems. */
+export function bellFlower(color: number, seed: number): THREE.BufferGeometry {
+  const r = mulberry32(seed);
+  const parts: THREE.BufferGeometry[] = [];
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2 + r(), h = 0.25 + r() * 0.15;
+    parts.push(colorize(taperTube([V(0, 0, 0), V(Math.cos(a) * 0.05, h * 0.7, Math.sin(a) * 0.05), V(Math.cos(a) * 0.12, h, Math.sin(a) * 0.12)], 0.012, 0.008, 4, 4), 0x4f9a35));
+    parts.push(colorize(at(lathe([[0, 0.08], [0.05, 0.07], [0.065, 0.0], [0.05, -0.01], [0, 0.03]], 8), Math.cos(a) * 0.13, h - 0.08, Math.sin(a) * 0.13), color));
+  }
+  parts.push(gradient(at(blob(0.09, seed, 0.3, 1), 0, 0.05, 0, 0, 0, 0, [1.2, 0.5, 1.2]), 0x3f8a2c, 0x6fb03c, 0, 0.1));
+  return merge(parts);
+}
+/** Daisy cluster: several small white flowers at different heights. */
+export function daisyCluster(seed: number): THREE.BufferGeometry {
+  const r = mulberry32(seed);
+  const parts: THREE.BufferGeometry[] = [];
+  for (let i = 0; i < 5; i++) {
+    const x = (r() - 0.5) * 0.35, z = (r() - 0.5) * 0.35, h = 0.12 + r() * 0.14;
+    parts.push(colorize(at(cyl(0.01, 0.012, h, 4), x, h / 2, z), 0x4f9a35));
+    for (let k = 0; k < 7; k++) { const b = (k / 7) * Math.PI * 2; parts.push(colorize(at(sphere(0.03, 6, 4), x + Math.cos(b) * 0.04, h, z + Math.sin(b) * 0.04, 0, -b, 0, [1.4, 0.3, 0.6]), 0xffffff)); }
+    parts.push(colorize(at(sphere(0.022, 6, 4), x, h + 0.01, z), 0xffc93a));
+  }
+  return merge(parts);
+}
 export function flowerModel(petal: number, center = 0xffd64a, seed = 1): THREE.BufferGeometry {
   const r = mulberry32(seed);
   const parts: THREE.BufferGeometry[] = [];
@@ -199,19 +247,35 @@ export function mushroomModel(cap = 0xd8452f, glow = false): THREE.BufferGeometr
   return merge([stem, c]);
 }
 
-export function rockModel(seed: number, moss = false): THREE.BufferGeometry {
-  const g = blob(1, seed, 0.28, 3, 1);
-  const p = g.attributes.position;
-  for (let i = 0; i < p.count; i++) {
-    let y = p.getY(i);
-    if (y < -0.25) y = -0.25 + (y + 0.25) * 0.2;
-    p.setXYZ(i, p.getX(i) * 1.1, y * 0.78, p.getZ(i));
+export type RockKind = 'round' | 'flat' | 'angular' | 'stack' | 'boulder';
+/** Rocks with distinct silhouettes: soft round, flat slab, faceted angular, stacked pile, big ledge boulder. */
+export function rockModel(seed: number, moss = false, kind: RockKind = 'round'): THREE.BufferGeometry {
+  let g: THREE.BufferGeometry;
+  if (kind === 'stack') {
+    g = merge([at(blob(0.85, seed, 0.2, 2), 0, -0.05, 0, 0, 0, 0, [1.1, 0.55, 1]), at(blob(0.55, seed + 3, 0.22, 2), 0.15, 0.45, 0.05, 0, 0, 0.2, [1, 0.6, 0.9]), at(blob(0.32, seed + 7, 0.25, 2), -0.05, 0.8, 0, 0, 0, -0.2, [1, 0.7, 1])]);
+    g.computeVertexNormals();
+  } else {
+    const detail = kind === 'angular' ? 1 : 3;
+    const rough = kind === 'angular' ? 0.18 : kind === 'flat' ? 0.15 : 0.28;
+    g = blob(1, seed, rough, detail, 1);
+    const p = g.attributes.position;
+    const sy = kind === 'flat' ? 0.38 : kind === 'boulder' ? 0.95 : kind === 'angular' ? 0.85 : 0.78;
+    const sx = kind === 'flat' ? 1.35 : kind === 'boulder' ? 1.25 : 1.1;
+    for (let i = 0; i < p.count; i++) {
+      let y = p.getY(i);
+      if (y < -0.25) y = -0.25 + (y + 0.25) * 0.2;
+      // boulders get a flat ledge top
+      if (kind === 'boulder' && y > 0.55) y = 0.55 + (y - 0.55) * 0.25;
+      p.setXYZ(i, p.getX(i) * sx, y * sy, p.getZ(i));
+    }
+    g.computeVertexNormals();
   }
-  g.computeVertexNormals();
-  const a = new THREE.Color(0xa59a88), b = new THREE.Color(0xd8cdb6), m = new THREE.Color(0x6aa83d), t = new THREE.Color();
+  const a = new THREE.Color(kind === 'angular' ? 0x8f8a82 : 0xa59a88), b = new THREE.Color(kind === 'angular' ? 0xcfcac0 : 0xd8cdb6), m = new THREE.Color(0x6aa83d), t = new THREE.Color();
   paint(g, (x, y, z, nx, ny) => {
     t.copy(a).lerp(b, Math.min(1, Math.max(0, (y + 0.3) * 0.9)));
-    if (moss && ny > 0.55 && y > 0.1) t.lerp(m, Math.min(1, (ny - 0.55) * 3));
+    // faint mineral banding and speckle
+    t.multiplyScalar(0.94 + 0.08 * Math.sin(y * 9 + x * 2.3) + 0.04 * Math.sin(x * 23 + z * 19));
+    if ((moss || kind === 'boulder') && ny > 0.55 && y > 0.1) t.lerp(m, Math.min(1, (ny - 0.55) * (moss ? 3 : 1.6)));
     return t;
   });
   return g;

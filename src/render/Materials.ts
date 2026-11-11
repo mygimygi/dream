@@ -30,7 +30,7 @@ export interface ToyOpts {
 export const TOY = { gloss: 1 };
 
 export function toy(params: THREE.MeshStandardMaterialParameters, o: ToyOpts = {}): THREE.MeshStandardMaterial {
-  const gloss = (o.gloss ?? 0.45) * TOY.gloss;
+  const gloss = (o.gloss ?? 0.15) * TOY.gloss;
   // the clearcoat layer costs a second specular lobe: only pay for it when the device can afford it
   const m = gloss > 0
     ? new THREE.MeshPhysicalMaterial({ roughness: 0.62, metalness: 0, clearcoat: gloss, clearcoatRoughness: 0.3, envMapIntensity: 0.45, ...params })

@@ -5,10 +5,12 @@ import { at, blob, colorize, cyl, gradient, lathe, merge, rbox, sphere, taperTub
 
 /** Hand-modelled miniature props. Every prop is a small group of vertex-coloured meshes using the shared toy material. */
 export const MAT = {
-  vc: toy({ vertexColors: true }, { rim: 0.16 }),
-  vcOcc: toy({ vertexColors: true }, { rim: 0.14, occlude: true }),
-  vcDetail: toy({ vertexColors: true, roughness: 0.9 }, { rim: 0.12, detail: 0.35 }),
-  vcDetailOcc: toy({ vertexColors: true, roughness: 0.9 }, { rim: 0.12, detail: 0.35, occlude: true }),
+  // painted wood & small props: warm, faint varnish
+  vc: toy({ vertexColors: true, roughness: 0.68 }, { rim: 0.16, gloss: 0.18, detail: 0.08 }),
+  vcOcc: toy({ vertexColors: true, roughness: 0.68 }, { rim: 0.14, occlude: true, gloss: 0.18, detail: 0.08 }),
+  // stone & plaster: matte, gently mottled
+  vcDetail: toy({ vertexColors: true, roughness: 0.92 }, { rim: 0.1, detail: 0.3, gloss: 0 }),
+  vcDetailOcc: toy({ vertexColors: true, roughness: 0.92 }, { rim: 0.1, detail: 0.3, occlude: true, gloss: 0 }),
   metal: toy({ color: 0xe0b44c, metalness: 0.65, roughness: 0.35 }, { rim: 0.25 }),
   glass: new THREE.MeshStandardMaterial({ color: 0xffd98a, emissive: 0xffb84a, emissiveIntensity: 1.3, roughness: 0.3 }),
 };
@@ -57,11 +59,17 @@ export function cottage(seed: number, roofColor: number, wallColor = 0xf1e2c4): 
   const roof = lathe([[0, H + th + 0.2], [0.5, H + th + 0.1], [RR * 0.55, H + th * 0.7], [RR * 0.88, H + th * 0.25], [RR, H + 0.15], [RR * 1.02, H - 0.05], [RR * 0.97, H - 0.22], [RR * 0.85, H - 0.18], [R * 0.95, H]], 32);
   const rc = new THREE.Color(roofColor), rd = rc.clone().multiplyScalar(0.68), t = new THREE.Color();
   paint(roof, (x, y, z) => {
-    const a = Math.atan2(z, x), sh = 0.5 + 0.5 * Math.sin(a * 16 + y * 2);
+    const a = Math.atan2(z, x);
+    // overlapping shingle rows: each row offsets its tile seams, the lower lip of a row is shaded
+    const row = (y - H) / 0.34, ri = Math.floor(row), fr = row - ri;
+    const seam = Math.abs(Math.sin(a * 22 + ri * 1.7)) < 0.12 ? 0.86 : 1;
+    const lip = fr < 0.18 ? 0.82 + fr : 1;
     t.copy(rd).lerp(rc, Math.min(1, (y - H + 0.2) / th + 0.15));
-    return t.multiplyScalar(0.9 + 0.1 * sh);
+    return t.multiplyScalar(seam * lip * (0.96 + 0.06 * Math.sin(ri * 3.1)));
   });
-  grp.add(mesh(roof, MAT.vcDetailOcc));
+  grp.add(mesh(roof, MAT.vcOcc));
+  // thick rolled trim along the eaves
+  grp.add(mesh(colorize(at(new THREE.TorusGeometry(RR * 1.0, 0.16, 10, 48), 0, H + 0.02, 0, Math.PI / 2, 0, 0), rd.clone().multiplyScalar(0.85).getHex()), MAT.vcOcc));
   // topknot
   grp.add(mesh(colorize(at(sphere(0.32, 14, 10), 0, H + th + 0.35, 0), rd.getHex()), MAT.vcOcc));
   // chimney
@@ -481,5 +489,40 @@ export function barrel(): THREE.Group {
   for (let i = 0; i < p.count; i++) { const y = p.getY(i), a = Math.atan2(p.getZ(i), p.getX(i)); const band = Math.abs(y - 0.18) < 0.05 || Math.abs(y - 0.72) < 0.05; const c = band ? new THREE.Color(0x5a5a62) : new THREE.Color(0xb07a44).multiplyScalar(0.85 + 0.15 * Math.abs(Math.sin(a * 8))); col.set([c.r, c.g, c.b], i * 3); }
   b.setAttribute('color', new THREE.BufferAttribute(col, 3));
   g.add(mesh(b));
+  return g;
+}
+
+export function mailbox(color = 0xd0503a): THREE.Group {
+  const g = new THREE.Group();
+  g.add(mesh(colorize(at(rbox(0.12, 1.0, 0.12, 0.04), 0, 0.5, 0), 0x6e4426)));
+  const box = merge([colorize(at(rbox(0.36, 0.3, 0.55, 0.06), 0, 1.12, 0), color), colorize(at(new THREE.CylinderGeometry(0.18, 0.18, 0.55, 14, 1, false, 0, Math.PI), 0, 1.27, 0, Math.PI / 2, 0, Math.PI / 2), color)]);
+  g.add(mesh(box));
+  g.add(mesh(colorize(at(rbox(0.03, 0.18, 0.1, 0.01), 0.2, 1.3, -0.1), 0xf2c94c), MAT.metal));
+  return g;
+}
+export function woodpile(): THREE.Group {
+  const g = new THREE.Group(); const r = mulberry32(4);
+  const logs: THREE.BufferGeometry[] = [];
+  for (let row = 0; row < 3; row++) for (let i = 0; i < 4 - row; i++) {
+    const x = (i - (3 - row) / 2) * 0.32, y = 0.15 + row * 0.27;
+    const log = at(cyl(0.15, 0.15, 1.1, 10), x, y, (r() - 0.5) * 0.1, Math.PI / 2, 0, 0);
+    const p = log.attributes.position, n = log.attributes.normal, col = new Float32Array(p.count * 3);
+    for (let k = 0; k < p.count; k++) { const end = Math.abs(n.getZ(k)) > 0.9; const c = end ? new THREE.Color(0xe8c890) : new THREE.Color(0x7a4e2c); if (end && Math.hypot(p.getX(k) - x, p.getY(k) - y) < 0.07) c.set(0xc89a60); col.set([c.r, c.g, c.b], k * 3); }
+    log.setAttribute('color', new THREE.BufferAttribute(col, 3)); logs.push(log);
+  }
+  g.add(mesh(merge(logs)));
+  g.add(mesh(colorize(at(rbox(0.06, 0.5, 0.06, 0.02), 0.65, 0.25, 0.3, 0, 0, 0.3), 0x8a8a92)));
+  return g;
+}
+export function basket(fill = 0xe8483a): THREE.Group {
+  const g = new THREE.Group();
+  const b = lathe([[0, 0], [0.26, 0], [0.32, 0.12], [0.34, 0.28], [0.3, 0.3], [0, 0.3]], 16);
+  const p = b.attributes.position, col = new Float32Array(p.count * 3);
+  for (let i = 0; i < p.count; i++) { const a = Math.atan2(p.getZ(i), p.getX(i)), y = p.getY(i); const w = (Math.sin(a * 14 + (Math.floor(y * 18) % 2) * Math.PI) > 0) ? 1 : 0.82; const c = new THREE.Color(0xc89a58).multiplyScalar(w); col.set([c.r, c.g, c.b], i * 3); }
+  b.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  g.add(mesh(b));
+  const fruit: THREE.BufferGeometry[] = [];
+  for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2; fruit.push(colorize(at(sphere(0.1, 10, 8), Math.cos(a) * 0.14, 0.33 + (i % 2) * 0.05, Math.sin(a) * 0.14), fill)); }
+  g.add(mesh(merge(fruit)));
   return g;
 }

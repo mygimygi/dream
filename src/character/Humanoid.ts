@@ -160,7 +160,8 @@ export function buildHumanoid(look: HumanoidLook): Rig {
     const cg = new THREE.CylinderGeometry(0.2, 0.34, 0.5, 18, 4, true, Math.PI * 0.5, Math.PI);
     at(cg, 0, -0.25, 0.08);
     gradient(cg, look.cape, look.tunicHi, -0.5, 0);
-    const cm = toy({ vertexColors: true, roughness: 0.9, side: THREE.DoubleSide }, { rim: 0.15 });
+    const cm = toy({ vertexColors: true, roughness: 0.85, side: THREE.DoubleSide }, { rim: 0.15, gloss: 0 }) as THREE.MeshPhysicalMaterial;
+    if ((cm as any).isMeshPhysicalMaterial) { cm.sheen = 0.8; cm.sheenRoughness = 0.6; cm.sheenColor = new THREE.Color(0xffffff); }
     materials.push(cm);
     const cmesh = new THREE.Mesh(cg, cm); cmesh.castShadow = true;
     cape.add(cmesh);
