@@ -411,3 +411,20 @@ export function lanternPost(): THREE.Group {
   g.add(lamp);
   return g;
 }
+
+/** Blacksmith's market stall: plank counter, striped awning, anvil and a rack of blades. */
+export function smithStall(): THREE.Group {
+  const g = new THREE.Group();
+  g.add(mesh(planks(at(rbox(3.4, 1.0, 1.0, 0.1), 0, 0.5, 0), 0xb07a44, 0x8a5a32, 'x', 0.34)));
+  g.add(mesh(colorize(at(rbox(3.6, 0.12, 1.15, 0.05), 0, 1.04, 0), 0x6e4426)));
+  for (const sx of [-1.65, 1.65]) for (const sz of [-0.45, 1.6]) g.add(mesh(colorize(at(rbox(0.16, 2.9, 0.16, 0.05), sx, 1.45, sz), 0x6e4426)));
+  const aw: THREE.BufferGeometry[] = [];
+  for (let i = 0; i < 8; i++) aw.push(colorize(at(rbox(0.46, 0.12, 2.5, 0.05), -1.6 + i * 0.46, 2.85, 0.55, 0.28, 0, 0), i % 2 ? 0xf6ead2 : 0xd0503a));
+  g.add(mesh(merge(aw), MAT.vcOcc));
+  g.add(mesh(colorize(merge([at(rbox(0.5, 0.18, 0.3, 0.04), 0, 1.2, 0.05), at(rbox(0.22, 0.2, 0.2, 0.04), 0, 1.11, 0.05), at(new THREE.ConeGeometry(0.1, 0.25, 8), 0.33, 1.25, 0.05, 0, 0, -Math.PI / 2)]), 0x4a4a52), MAT.metal));
+  for (let i = 0; i < 3; i++) {
+    const b = colorize(at(rbox(0.07, 0.75, 0.02, 0.02), -1.1 + i * 0.3, 1.5, -0.38, 0, 0, 0.05), [0xdfe9f2, 0xf2d9b0, 0xfff6e0][i]);
+    g.add(mesh(merge([b, colorize(at(rbox(0.2, 0.05, 0.05, 0.01), -1.1 + i * 0.3, 1.13, -0.38), 0x6e4426)])));
+  }
+  return g;
+}

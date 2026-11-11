@@ -40,6 +40,7 @@ export const NPCS = [
   { id: 'baker', name: '다래', x: -9, z: 29.5, look: 'baker' },
   { id: 'fisher', name: '도윤 아저씨', x: 2, z: 74, look: 'fisher' },
   { id: 'kid', name: '꼬마 모래', x: -18, z: 26, look: 'kid' },
+  { id: 'smith', name: '대장장이 바위', x: -3.5, z: 37, look: 'smith' },
 ];
 export const ENEMY_SPAWNS: { type: string; x: number; z: number }[] = [
   { type: 'acorn', x: 10, z: 52 }, { type: 'acorn', x: -14, z: 56 }, { type: 'acorn', x: 24, z: 42 }, { type: 'acorn', x: -30, z: 8 },
@@ -48,4 +49,14 @@ export const ENEMY_SPAWNS: { type: string; x: number; z: number }[] = [
   { type: 'crab', x: -8, z: 78 }, { type: 'crab', x: 14, z: 80 }, { type: 'crab', x: 26, z: 76 }, { type: 'crab', x: 82, z: 6 },
   { type: 'acorn', x: 52, z: 38 }, { type: 'acorn', x: 62, z: 42 },
   { type: 'shroom', x: 4, z: -48 }, { type: 'acorn', x: -6, z: -36 },
+];
+export const SMITH_STALL = { x: -3.5, z: 39.2 };
+export interface ShopItem { id: string; price: number; currency: 'shell' | 'berry'; }
+export const SHOP: ShopItem[] = [
+  { id: 'berry', price: 10, currency: 'shell' },
+  { id: 'steelSword', price: 50, currency: 'shell' },
+  { id: 'whaleSword', price: 120, currency: 'shell' },
+  { id: 'leatherVest', price: 40, currency: 'shell' },
+  { id: 'shellArmor', price: 90, currency: 'shell' },
+  { id: 'turtleShield', price: 4, currency: 'berry' },
 ];

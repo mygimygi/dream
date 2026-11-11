@@ -6,8 +6,8 @@ import { at, blob, colorize, cyl, gradient, lathe, merge, rbox, sphere, taperTub
  *  Used for the hero and the villagers (different outfits/hair). */
 export interface HumanoidLook {
   skin: number; hair: number; hairHi: number; shirt: number; tunic: number; tunicHi: number; pants: number; boots: number; gloves: number;
-  scarf?: number; cape?: number; hairStyle: 'hero' | 'bob' | 'bald' | 'braids'; beard?: number; hat?: 'none' | 'straw' | 'cap'; hatColor?: number; scale?: number;
-  eye?: number; apron?: number;
+  scarf?: number; cape?: number; hairStyle: 'hero' | 'bob' | 'bald' | 'braids' | 'short'; beard?: number; hat?: 'none' | 'straw' | 'cap'; hatColor?: number; scale?: number;
+  eye?: number; apron?: number; eyeScale?: number; lashes?: boolean; armor?: string;
 }
 export const HERO_LOOK: HumanoidLook = {
   skin: 0xffd2b0, hair: 0xa8482a, hairHi: 0xe07b45, shirt: 0xf6ead2, tunic: 0x2f9e94, tunicHi: 0x55c2b2, pants: 0x7a5236, boots: 0x6b3f24,
@@ -18,7 +18,7 @@ export interface Rig {
   root: THREE.Group; body: THREE.Group; hips: THREE.Group; torso: THREE.Group; head: THREE.Group; neck: THREE.Group;
   armL: THREE.Group; foreL: THREE.Group; handL: THREE.Group; armR: THREE.Group; foreR: THREE.Group; handR: THREE.Group;
   legL: THREE.Group; shinL: THREE.Group; footL: THREE.Group; legR: THREE.Group; shinR: THREE.Group; footR: THREE.Group;
-  eyes: THREE.Object3D[]; lids: THREE.Object3D[]; mouth: THREE.Mesh; cape?: THREE.Group; scarfTail?: THREE.Group;
+  eyes: THREE.Object3D[]; lids: THREE.Object3D[]; eyeScale: number; mouth: THREE.Mesh; cape?: THREE.Group; scarfTail?: THREE.Group;
   materials: THREE.MeshStandardMaterial[];
 }
 
@@ -43,6 +43,17 @@ export function buildHumanoid(look: HumanoidLook): Rig {
   torsoParts.push(colorize(at(lathe([[0.0, 0.0], [0.13, 0.0], [0.15, 0.05], [0.0, 0.06]], 16), 0, 0.4, 0), look.shirt));
   if (look.apron) torsoParts.push(colorize(at(rbox(0.32, 0.42, 0.04, 0.03), 0, 0.05, 0.22), look.apron));
   torso.add(M(merge(torsoParts)));
+  if (look.armor === 'leatherVest') {
+    const v = lathe([[0.0, 0.36], [0.2, 0.36], [0.245, 0.25], [0.25, 0.08], [0.265, -0.05], [0.0, -0.05]], 20);
+    torso.add(M(colorize(v, 0x9a6a3e, 0.15, 5)));
+    torso.add(M(colorize(at(new THREE.TorusGeometry(0.25, 0.022, 6, 22), 0, 0.22, 0, Math.PI / 2, 0, 0), 0x5a3a22)));
+  } else if (look.armor === 'shellArmor') {
+    const v = lathe([[0.0, 0.38], [0.21, 0.38], [0.26, 0.26], [0.27, 0.08], [0.285, -0.06], [0.0, -0.06]], 22);
+    gradient(v, 0xd8a090, 0xfff0e6, -0.06, 0.38);
+    torso.add(M(v));
+    for (let i = 0; i < 5; i++) torso.add(M(colorize(at(rbox(0.05, 0.38, 0.02, 0.02), Math.sin(-0.7 + i * 0.35) * 0.27, 0.15, Math.cos(-0.7 + i * 0.35) * 0.27, 0, -0.7 + i * 0.35, 0), 0xe8b8a8)));
+    for (const sgn of [-1, 1]) torso.add(M(gradient(at(sphere(0.12, 14, 10), sgn * 0.27, 0.36, 0, 0, 0, sgn * 0.3, [1.1, 0.6, 1]), 0xd8a090, 0xfff0e6, 0.3, 0.42)));
+  }
   // satchel strap
   if (look.scarf) {
     
@@ -69,6 +80,8 @@ export function buildHumanoid(look: HumanoidLook): Rig {
     const shine = M(colorize(at(sphere(0.026, 8, 6), 0.018, 0.035, 0.03), 0xffffff));
     const shine2 = M(colorize(at(sphere(0.012, 6, 5), -0.02, -0.035, 0.03), 0xffffff));
     e.add(iris, shine, shine2);
+    const es = look.eyeScale ?? 1; e.scale.set(es, es, es);
+    if (look.lashes) for (const k of [-1, 0, 1]) e.add(M(colorize(at(rbox(0.016, 0.032, 0.012, 0.006), k * 0.035 - s * 0.01, 0.095, 0.022, 0, 0, k * 0.55 - s * 0.35), 0x2a1a14)));
     head.add(e); eyes.push(e);
     const lid = M(colorize(at(sphere(0.07, 14, 8, ), 0, 0, 0, 0, 0, 0, [0.9, 1.3, 0.5]), look.skin), skinMat);
     lid.position.copy(e.position); lid.position.z -= 0.004; lid.rotation.y = e.rotation.y; lid.scale.y = 0.01; lid.visible = false;
@@ -98,6 +111,11 @@ export function buildHumanoid(look: HumanoidLook): Rig {
     // big bun + cowlick sprout
     hairParts.push(at(blob(0.16, 12, 0.08, 2), 0, 0.58, -0.26));
     hairParts.push(at(taperTube([new THREE.Vector3(0, 0.62, 0.05), new THREE.Vector3(0.03, 0.78, 0.0), new THREE.Vector3(0.12, 0.84, -0.06), new THREE.Vector3(0.16, 0.78, -0.08)], 0.045, 0.012, 10, 7), 0, 0, 0));
+  } else if (look.hairStyle === 'short') {
+    // short tousled crop: small tufts across the forehead and crown
+    const tufts = [[-0.17, 0.57, 0.22, 0.6], [-0.05, 0.62, 0.25, 0.2], [0.08, 0.61, 0.24, -0.25], [0.19, 0.55, 0.2, -0.6], [0.0, 0.7, 0.08, 0], [-0.12, 0.68, -0.05, 0.4], [0.13, 0.67, -0.04, -0.4]];
+    for (const [x, y, z, rz] of tufts) hairParts.push(at(blob(0.09, x * 13 + 1, 0.12, 2), x, y, z, 0.7, 0, rz, [1.05, 0.55, 0.8]));
+    for (const sgn of [-1, 1]) hairParts.push(at(blob(0.07, sgn * 3, 0.08, 2), sgn * 0.31, 0.3, 0.06, 0, 0, sgn * 0.2, [0.5, 1.0, 0.8]));
   } else if (look.hairStyle === 'bob') {
     for (const s of [-1, 1]) hairParts.push(at(blob(0.15, s * 7, 0.1, 2), s * 0.27, 0.22, -0.04, 0, 0, s * 0.15, [0.75, 1.4, 1.1]));
     hairParts.push(at(blob(0.2, 33, 0.1, 2), 0, 0.5, 0.2, 0.6, 0, 0, [1.5, 0.6, 0.6]));
@@ -181,7 +199,7 @@ export function buildHumanoid(look: HumanoidLook): Rig {
   if (look.scale) root.scale.setScalar(look.scale);
   return {
     root, body, hips, torso, head, neck, armL: L.sh, foreL: L.fore, handL: L.hand, armR: R.sh, foreR: R.fore, handR: R.hand,
-    legL: LL.leg, shinL: LL.shin, footL: LL.foot, legR: RL.leg, shinR: RL.shin, footR: RL.foot, eyes, lids, mouth, cape, scarfTail, materials,
+    legL: LL.leg, shinL: LL.shin, footL: LL.foot, legR: RL.leg, shinR: RL.shin, footR: RL.foot, eyes, lids, eyeScale: look.eyeScale ?? 1, mouth, cape, scarfTail, materials,
   };
 }
 
@@ -189,13 +207,14 @@ export function buildHumanoid(look: HumanoidLook): Rig {
 export function swordModel(tier = 1): THREE.Group {
   const g = new THREE.Group();
   const m = toy({ vertexColors: true, roughness: 0.45, metalness: tier > 1 ? 0.5 : 0.05 }, { rim: 0.35 });
-  const bladeCol = tier > 1 ? 0xdfe9f2 : 0xf2d9b0;
+  const bladeCol = tier === 3 ? 0xfff6e0 : tier > 1 ? 0xdfe9f2 : 0xf2d9b0;
   const s = new THREE.Shape();
   s.moveTo(-0.045, 0); s.lineTo(-0.05, 0.5); s.quadraticCurveTo(-0.04, 0.62, 0, 0.7); s.quadraticCurveTo(0.04, 0.62, 0.05, 0.5); s.lineTo(0.045, 0); s.lineTo(-0.045, 0);
   const blade = new THREE.ExtrudeGeometry(s, { depth: 0.018, bevelEnabled: true, bevelThickness: 0.012, bevelSize: 0.012, bevelSegments: 2 });
   at(blade, 0, 0.1, -0.009);
-  gradient(blade, tier > 1 ? 0x9fb6c8 : 0xc99a62, bladeCol, 0.1, 0.8);
-  const guard = colorize(at(rbox(0.24, 0.05, 0.07, 0.02), 0, 0.09, 0), tier > 1 ? 0x3a6fc8 : 0xe0705a);
+  if (tier === 3) blade.scale(1.35, 1.25, 1.2);
+  gradient(blade, tier === 3 ? 0xd8cdb0 : tier > 1 ? 0x9fb6c8 : 0xc99a62, bladeCol, 0.1, 0.9);
+  const guard = colorize(at(rbox(tier === 3 ? 0.32 : 0.24, 0.05, 0.07, 0.02), 0, 0.09, 0), tier === 3 ? 0x2f9e94 : tier > 1 ? 0x3a6fc8 : 0xe0705a);
   const gem = colorize(at(sphere(0.03, 10, 8), 0, 0.09, 0.035), 0x7fe6d6);
   const grip = colorize(at(cyl(0.024, 0.026, 0.14, 8), 0, 0.0, 0), 0x6b3f24);
   const pommel = colorize(at(sphere(0.035, 10, 8), 0, -0.08, 0), 0xe0b44c);
@@ -204,16 +223,21 @@ export function swordModel(tier = 1): THREE.Group {
   return g;
 }
 /** Round wooden shield with a spiral shell emblem — an original design. */
-export function shieldModel(): THREE.Group {
+export function shieldModel(kind = 'shield'): THREE.Group {
   const g = new THREE.Group();
   const m = toy({ vertexColors: true, roughness: 0.55 }, { rim: 0.3 });
   const body = lathe([[0, 0.045], [0.18, 0.04], [0.24, 0.02], [0.25, -0.01], [0.23, -0.03], [0, -0.03]], 28);
   at(body, 0, 0, 0, Math.PI / 2, 0, 0);
-  gradient(body, 0x2f7a98, 0x4fb0c8, -0.25, 0.25);
-  const rim = colorize(at(new THREE.TorusGeometry(0.245, 0.026, 8, 30), 0, 0, 0.0), 0xd8a24a);
+  const turtle = kind === 'turtleShield';
+  if (turtle) body.scale(1.18, 1.18, 1.4);
+  gradient(body, turtle ? 0x3f7a3a : 0x2f7a98, turtle ? 0x8cc06a : 0x4fb0c8, -0.25, 0.25);
+  const rim = colorize(at(new THREE.TorusGeometry(kind === 'turtleShield' ? 0.29 : 0.245, 0.026, 8, 30), 0, 0, 0.0), kind === 'turtleShield' ? 0x6a4a2a : 0xd8a24a);
   const parts: THREE.BufferGeometry[] = [body, rim];
   // shell emblem: spiral of shrinking beads
-  for (let i = 0; i < 16; i++) {
+  if (turtle) {
+    // hexagonal shell plates
+    for (let i = 0; i < 7; i++) { const a = (i / 6) * Math.PI * 2, r = i === 6 ? 0 : 0.15; parts.push(colorize(at(new THREE.CylinderGeometry(0.075, 0.08, 0.04, 6), Math.cos(a) * r, Math.sin(a) * r, 0.06, Math.PI / 2, 0, 0), 0xc8e09a)); }
+  } else for (let i = 0; i < 16; i++) {
     const t = i / 16, a = t * Math.PI * 3.2, r = 0.13 * (1 - t * 0.8);
     parts.push(colorize(at(sphere(0.032 * (1 - t * 0.6), 8, 6), Math.cos(a) * r, Math.sin(a) * r, 0.045), 0xfff1d8));
   }

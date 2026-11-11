@@ -8,6 +8,7 @@ const LOOKS: Record<string, HumanoidLook> = {
   elder: { skin: 0xf2c4a2, hair: 0xe8e4dc, hairHi: 0xffffff, shirt: 0xf3e6c8, tunic: 0x7a5aa8, tunicHi: 0x9a7ac8, pants: 0x5a4a6a, boots: 0x6a4a34, gloves: 0xf2c4a2, hairStyle: 'braids', hat: 'none', apron: 0xe8d8b0, scale: 0.92, eye: 0x3a2a24 },
   baker: { skin: 0xffd8b8, hair: 0x5a3422, hairHi: 0x8a5a3a, shirt: 0xffffff, tunic: 0xe86a5a, tunicHi: 0xf08a7a, pants: 0x6a4a3a, boots: 0x5a3a24, gloves: 0xffd8b8, hairStyle: 'bob', apron: 0xfff6e6, eye: 0x4a2a1a },
   fisher: { skin: 0xd8a080, hair: 0x3a2a20, hairHi: 0x5a4030, shirt: 0xe8eef6, tunic: 0x3a6aa8, tunicHi: 0x5a8ac8, pants: 0x4a4a5a, boots: 0x3a3a44, gloves: 0xd8a080, hairStyle: 'bald', beard: 0x5a4030, hat: 'straw', hatColor: 0x2f6aa8, scale: 1.08 },
+  smith: { skin: 0xd89a78, hair: 0x2a2220, hairHi: 0x4a3a34, shirt: 0xe8dcc8, tunic: 0x6a5a4a, tunicHi: 0x8a7a6a, pants: 0x4a3a2a, boots: 0x3a2a1a, gloves: 0x5a4030, hairStyle: 'short', beard: 0x2a2220, apron: 0x8a5a32, scale: 1.12, eye: 0x2a1a14 },
   kid: { skin: 0xffd2b0, hair: 0xe0b04a, hairHi: 0xffd870, shirt: 0xffffff, tunic: 0x6ab84a, tunicHi: 0x8ad86a, pants: 0x4a6aa8, boots: 0xc04a3a, gloves: 0xffd2b0, hairStyle: 'bob', hat: 'cap', hatColor: 0xe8584a, scale: 0.8 },
 };
 

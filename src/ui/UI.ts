@@ -147,13 +147,13 @@ export class UI {
     let sel = ids[0];
     const render = () => {
       const d = sel ? ITEMS[sel] : null;
-      const kindName: Record<string, string> = { weapon: '무기', shield: '방패', tool: '특수 도구', consumable: '회복 아이템', upgrade: '강화', key: '열쇠', quest: '퀘스트 아이템', currency: '화폐', treasure: '수집품' };
-      const eqd = (id: string) => inv.equipped.weapon === id || inv.equipped.shield === id || inv.equipped.tool === id;
+      const kindName: Record<string, string> = { weapon: '무기', shield: '방패', armor: '방어구', tool: '특수 도구', consumable: '회복 아이템', upgrade: '강화', key: '열쇠', quest: '퀘스트 아이템', currency: '화폐', treasure: '수집품' };
+      const eqd = (id: string) => inv.equipped.weapon === id || inv.equipped.shield === id || inv.equipped.tool === id || inv.equipped.armor === id;
       this.panel('inventory', `<h2>가방 <button class="btn x" data-m="close" aria-label="닫기">닫기</button></h2>
         <div class="stats"><span>❤ ${stats.hp / 2} / ${stats.max / 2}</span><span>반짝 조개 ${stats.shells}</span><span>별 조각 ${stats.stars}</span><span>플레이 ${stats.time}</span></div>
         <div class="inv"><div class="grid">${ids.length ? ids.map((id) => `<button class="slot ${id === sel ? 'sel' : ''}" data-id="${id}" aria-label="${ITEMS[id].name}"><img src="${this.icons[id]}" alt="">${eqd(id) ? '<span class="eq">장착</span>' : ''}${ITEMS[id].stack ? `<span class="n">${inv.count(id)}</span>` : ''}</button>`).join('') : '<p>아직 가방이 비어 있어요.</p>'}</div>
         <div class="detail">${d ? `<img src="${this.icons[d.id]}" alt=""><h3>${d.name}</h3><span class="tag">${kindName[d.kind]}</span><p>${d.desc}</p>
-          ${['weapon', 'shield', 'tool'].includes(d.kind) ? `<button class="btn primary" data-act="equip">${eqd(d.id) ? '장착 해제' : '장착하기'}</button>` : ''}
+          ${['weapon', 'shield', 'tool', 'armor'].includes(d.kind) ? `<button class="btn primary" data-act="equip">${eqd(d.id) ? '장착 해제' : '장착하기'}</button>` : ''}
           ${d.kind === 'consumable' ? `<button class="btn teal" data-act="use">사용하기</button>` : ''}` : ''}</div></div>`);
       this.el.panelBody.querySelectorAll<HTMLElement>('.slot').forEach((b) => b.addEventListener('click', () => { sel = b.dataset.id!; this.sfx('ui'); render(); }));
       this.el.panelBody.querySelector('[data-act=equip]')?.addEventListener('click', () => { this.onEquip?.(sel); this.sfx('ui'); render(); });
@@ -169,6 +169,45 @@ export class UI {
     this.el.btnFull.textContent = active ? '🗗' : '⛶';
     this.el.btnFull.setAttribute('aria-label', active ? '전체화면 끄기' : '전체화면');
   }
+  shop(items: { id: string; price: number; currency: 'shell' | 'berry'; owned: boolean; afford: boolean; equipped: boolean }[], wallet: { shell: number; berry: number }, onBuy: (id: string) => void) {
+    const cur = (c: string) => c === 'shell' ? `<img src="${this.icons.shell}" alt="">` : `<img src="${this.icons.berry}" alt="">`;
+    const kindName: Record<string, string> = { weapon: '무기', shield: '방패', armor: '방어구', consumable: '회복' };
+    this.panel('shop', `<h2>바위네 대장간 <button class="btn x" data-m="close">닫기</button></h2>
+      <div class="stats"><span class="wallet">${cur('shell')} 반짝 조개 ${wallet.shell}</span><span class="wallet">${cur('berry')} 회복 열매 ${wallet.berry}</span></div>
+      <div class="shop">${items.map((it) => { const d = ITEMS[it.id]; const stat = d.dmg ? `공격력 ${d.dmg}` : d.hearts ? `최대 하트 +${d.hearts}` : d.guardArc ? '넓은 방어' : '하트 3칸 회복';
+        return `<div class="sitem ${it.owned ? 'owned' : ''}"><img src="${this.icons[it.id]}" alt=""><div class="sbody"><b>${d.name}</b><span class="tag">${kindName[d.kind] ?? ''} · ${stat}</span><p>${d.desc}</p></div>
+        <button class="btn ${it.owned ? '' : 'primary'}" data-buy="${it.id}" ${it.owned || !it.afford ? 'disabled' : ''}>${it.owned ? (it.equipped ? '장착 중' : '보유') : `${cur(it.currency)} ${it.price}`}</button></div>`; }).join('')}</div>`);
+    this.el.panelBody.querySelectorAll<HTMLElement>('[data-buy]').forEach((b) => b.addEventListener('click', () => onBuy(b.dataset.buy!)));
+  }
+  /** Character creator: options panel beside a live 3D preview of the hero. */
+  creator(opts: { name: string; groups: { key: string; label: string; type: 'swatch' | 'choice' | 'range'; options?: { value: string; label?: string; color?: string }[]; min?: number; max?: number; step?: number }[]; values: Record<string, string> },
+    onChange: (key: string, value: string) => void, onRandom: () => void, onDone: (name: string) => void, onRotate: (d: number) => void) {
+    let el = this.root.querySelector('.creator') as HTMLElement | null;
+    if (!el) { el = document.createElement('div'); el.className = 'creator pe'; this.root.appendChild(el); }
+    el.hidden = false;
+    const v = opts.values;
+    el.innerHTML = `<div class="cr-card"><h2>나만의 모험가</h2>
+      <div class="cr-row"><label for="cr-name">이름</label><input id="cr-name" maxlength="8" value="${opts.name.replace(/"/g, '')}" autocomplete="off"></div>
+      ${opts.groups.map((g) => `<div class="cr-row"><label>${g.label}</label><div class="cr-opts">${
+        g.type === 'range' ? `<input type="range" data-g="${g.key}" min="${g.min}" max="${g.max}" step="${g.step}" value="${v[g.key]}" aria-label="${g.label}">`
+        : g.options!.map((o) => g.type === 'swatch'
+          ? `<button class="sw ${v[g.key] === o.value ? 'sel' : ''}" data-g="${g.key}" data-v="${o.value}" style="background:${o.color}" aria-label="${o.label ?? g.label}" title="${o.label ?? ''}"></button>`
+          : `<button class="chip ${v[g.key] === o.value ? 'sel' : ''}" data-g="${g.key}" data-v="${o.value}">${o.label}</button>`).join('')}</div></div>`).join('')}
+      <div class="cr-actions"><button class="btn" data-cr="rotL" aria-label="왼쪽으로 돌리기">⟲</button><button class="btn" data-cr="random">무작위</button><button class="btn" data-cr="rotR" aria-label="오른쪽으로 돌리기">⟳</button><button class="btn primary" data-cr="done">모험 시작</button></div></div>`;
+    el.querySelectorAll<HTMLElement>('button[data-g]').forEach((b) => b.addEventListener('click', () => {
+      this.sfx('ui'); el!.querySelectorAll(`button[data-g="${b.dataset.g}"]`).forEach((x) => x.classList.remove('sel')); b.classList.add('sel'); onChange(b.dataset.g!, b.dataset.v!);
+    }));
+    (el.querySelector('#cr-name') as HTMLInputElement).addEventListener('input', (e) => onChange('name', (e.target as HTMLInputElement).value.trim()));
+    el.querySelectorAll<HTMLInputElement>('input[type=range]').forEach((r) => r.addEventListener('input', () => onChange(r.dataset.g!, r.value)));
+    el.querySelector('[data-cr=random]')!.addEventListener('click', () => { this.sfx('ui'); onRandom(); });
+    el.querySelector('[data-cr=rotL]')!.addEventListener('click', () => onRotate(-0.6));
+    el.querySelector('[data-cr=rotR]')!.addEventListener('click', () => onRotate(0.6));
+    el.querySelector('[data-cr=done]')!.addEventListener('click', () => {
+      const n = (el!.querySelector('#cr-name') as HTMLInputElement).value.trim() || '미루';
+      this.sfx('ui'); el!.hidden = true; onDone(n);
+    });
+  }
+  hideCreator() { const el = this.root.querySelector('.creator') as HTMLElement | null; if (el) el.hidden = true; }
   pause() {
     this.panel('pause', `<h2>일시정지</h2><div class="menu">
       <button class="btn primary" data-m="close">계속하기</button><button class="btn" data-m="fullscreen">전체화면 켜기/끄기</button><button class="btn" data-m="inventory">가방</button>
@@ -200,5 +239,5 @@ export class UI {
       <p>플레이 시간 ${text.time} · 별 조각 ${text.stars}개</p><div class="menu"><button class="btn primary" data-c="free">계속 탐험하기</button><button class="btn" data-c="title">타이틀로</button></div></div>`;
     this.el.credits.querySelectorAll<HTMLElement>('[data-c]').forEach((b) => b.addEventListener('click', () => { this.el.credits.hidden = true; this.onMenu?.(b.dataset.c === 'free' ? 'free' : 'toTitle'); }));
   }
-  get anyModal() { return this.dialogOpen || !!this.panelOpen || !this.el.title.hidden || !this.el.credits.hidden; }
+  get anyModal() { return this.dialogOpen || !!this.panelOpen || !!(this.root.querySelector('.creator:not([hidden])')) || !this.el.title.hidden || !this.el.credits.hidden; }
 }

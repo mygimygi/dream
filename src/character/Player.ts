@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { buildHumanoid, HERO_LOOK, Rig, shieldModel, swordModel } from './Humanoid';
+import { buildHumanoid, HERO_LOOK, HumanoidLook, Rig, shieldModel, swordModel } from './Humanoid';
+import { ITEMS } from '../item/Items';
 import { AnimAction, HumanoidAnimator } from '../animation/HumanoidAnimator';
 import { ATTACKS, AttackDef, HIT_TIME, JUMP_ATTACK, ROLL_TIME } from '../combat/AttackTable';
 import { angleDiff, clamp, damp, dampAngle } from '../core/math';
@@ -33,6 +34,7 @@ export class Player {
   onLand?: (speed: number) => void;
 
   constructor(scene: THREE.Scene, public env: PlayerEnv, public input: Input, public camRig: CameraRig, public invt: Inventory) {
+    this.scene = scene;
     this.rig = buildHumanoid(HERO_LOOK);
     scene.add(this.rig.root);
     this.anim = new HumanoidAnimator(this.rig);
@@ -41,9 +43,38 @@ export class Player {
     this.shield = shieldModel();
     this.shieldPiv.add(this.shield);
     this.rig.torso.add(this.shieldPiv);
+    this.look = { ...HERO_LOOK };
     this.shadow = blobShadow(0.75); scene.add(this.shadow);
   }
-  get maxHp() { return this.invt.maxHearts * 2; }
+  scene: THREE.Scene; look: HumanoidLook; private gearKey = '';
+  get maxHp() { return (this.invt.maxHearts + this.invt.armorHearts()) * 2; }
+  /** Rebuild the body (appearance or worn armour changed) and re-attach the hand-held gear. */
+  setLook(look: HumanoidLook) {
+    this.look = { ...look };
+    const old = this.rig.root;
+    this.rig = buildHumanoid({ ...look, armor: this.invt.equipped.armor || undefined });
+    this.rig.root.position.copy(old.position); this.rig.root.rotation.copy(old.rotation);
+    old.removeFromParent();
+    this.scene.add(this.rig.root);
+    this.anim = new HumanoidAnimator(this.rig);
+    this.gearKey = '';
+    this.syncGear();
+  }
+  /** Swap sword/shield meshes to match what is equipped. */
+  syncGear() {
+    const e = this.invt.equipped;
+    const key = `${e.weapon}|${e.shield}|${e.armor}`;
+    if (key === this.gearKey) return;
+    const armorChanged = this.gearKey.split('|')[2] !== e.armor && this.gearKey !== '';
+    this.gearKey = key;
+    if (armorChanged) { this.setLook(this.look); return; }
+    this.sword.removeFromParent(); this.shield.removeFromParent();
+    this.sword = swordModel(ITEMS[e.weapon]?.tier ?? 1); this.sword.rotation.x = Math.PI / 2; this.sword.position.set(0, -0.02, 0.02);
+    this.rig.handR.add(this.sword);
+    this.shield = shieldModel(e.shield || 'shield'); this.shieldPiv.add(this.shield);
+    this.rig.torso.add(this.shieldPiv);
+    if (this.hp > this.maxHp) this.hp = this.maxHp;
+  }
   place(x: number, z: number, yaw: number) {
     this.pos.set(x, this.env.groundAt(x, z), z); this.yaw = yaw; this.vel.set(0, 0, 0); this.vy = 0; this.grounded = true;
     this.lastSafe.copy(this.pos); this.action = 'none';
@@ -64,8 +95,9 @@ export class Player {
     dir.normalize();
     if (this.guarding()) {
       const toAttacker = Math.atan2(-dir.x, -dir.z);
-      if (Math.abs(angleDiff(this.yaw, toAttacker)) < 1.25) {
-        this.knock.copy(dir).multiplyScalar(knock * 0.45);
+      const arc = ITEMS[this.invt.equipped.shield]?.guardArc ?? 1.25;
+      if (Math.abs(angleDiff(this.yaw, toAttacker)) < arc) {
+        this.knock.copy(dir).multiplyScalar(knock * (arc > 1.5 ? 0.25 : 0.45));
         events.emit('sfx', 'block'); events.emit('blocked', this.pos.clone().add(new THREE.Vector3(Math.sin(this.yaw) * 0.6, 1, Math.cos(this.yaw) * 0.6)));
         return 'blocked';
       }
@@ -97,6 +129,7 @@ export class Player {
     this.actionT += dt;
     if (this.inv > 0) this.inv -= dt;
     this.landT += dt;
+    this.syncGear();
     this.sword.visible = !!this.invt.equipped.weapon;
     this.shield.visible = !!this.invt.equipped.shield;
 

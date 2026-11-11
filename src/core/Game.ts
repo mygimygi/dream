@@ -25,8 +25,28 @@ import { TouchControls } from '../mobile/TouchControls';
 import { Dungeon, DUNGEON_ENTRY, DX, ROOMS } from '../dungeon/Dungeon';
 import { Gate, Plate, PushBlock } from '../puzzle/Puzzles';
 import { Fullscreen } from '../mobile/Fullscreen';
+import { HERO_LOOK, HumanoidLook } from '../character/Humanoid';
 
-type Mode = 'title' | 'play' | 'itemget' | 'dead' | 'ending' | 'transition';
+const HAIR: Record<string, [number, number, string]> = { auburn: [0xa8482a, 0xe07b45, '적갈색'], black: [0x2a2220, 0x4a3a34, '검정'], blond: [0xd8a840, 0xf6d878, '금발'], brown: [0x6a4228, 0x9a6a44, '갈색'], pink: [0xe07a9a, 0xffb0c8, '분홍'], teal: [0x3a8a9a, 0x6ac8d0, '청록'], silver: [0xb8b8c4, 0xffffff, '은발'] };
+const SKIN: Record<string, number> = { s1: 0xffe0c8, s2: 0xffd2b0, s3: 0xf0b890, s4: 0xd89a70, s5: 0xb07850, s6: 0x7a5038 };
+const EYE: Record<string, number> = { brown: 0x3a2a24, blue: 0x2a5a9a, green: 0x2a7a4a, amber: 0x9a5a1a };
+const OUTFIT: Record<string, { tunic: number; tunicHi: number; cape: number; scarf: number; label: string }> = {
+  teal: { tunic: 0x2f9e94, tunicHi: 0x55c2b2, cape: 0x237a78, scarf: 0xf08a3a, label: '청록' },
+  crimson: { tunic: 0xc8453a, tunicHi: 0xe8705a, cape: 0x8a2a2a, scarf: 0xf2c94c, label: '진홍' },
+  forest: { tunic: 0x4f8f3a, tunicHi: 0x7ab85a, cape: 0x3a6a2a, scarf: 0xe8d8a0, label: '숲' },
+  ocean: { tunic: 0x3a6ac8, tunicHi: 0x6a9ae8, cape: 0x2a4a8a, scarf: 0xf0f0f0, label: '바다' },
+  plum: { tunic: 0x8a5ab8, tunicHi: 0xaa80d8, cape: 0x5a3a8a, scarf: 0xf0a0c0, label: '보라' },
+  sun: { tunic: 0xe8a23a, tunicHi: 0xf6c860, cape: 0xb8702a, scarf: 0x3a8a9a, label: '해바라기' },
+};
+export interface Appearance { gender: 'f' | 'm'; hair: string; style: string; skin: string; eye: string; eyeSize: string; outfit: string; }
+export const DEFAULT_APPEARANCE: Appearance = { gender: 'f', hair: 'auburn', style: 'hero', skin: 's2', eye: 'brown', eyeSize: '1', outfit: 'teal' };
+export function lookFrom(a: Appearance): HumanoidLook {
+  const h = HAIR[a.hair] ?? HAIR.auburn, o = OUTFIT[a.outfit] ?? OUTFIT.teal;
+  return { ...HERO_LOOK, hair: h[0], hairHi: h[1], skin: SKIN[a.skin] ?? SKIN.s2, eye: EYE[a.eye] ?? EYE.brown, eyeScale: +a.eyeSize || 1,
+    hairStyle: a.style as HumanoidLook['hairStyle'], lashes: a.gender === 'f', tunic: o.tunic, tunicHi: o.tunicHi, cape: o.cape, scarf: o.scarf };
+}
+
+type Mode = 'title' | 'create' | 'play' | 'itemget' | 'dead' | 'ending' | 'transition';
 interface Pickup { obj: THREE.Object3D; id: string; pos: THREE.Vector3; vel: THREE.Vector3; t: number; big: boolean; count: number; }
 
 export class Game {
@@ -45,6 +65,7 @@ export class Game {
   private boss: Enemy | null = null; private altarPearl: THREE.Object3D | null = null; private beam: THREE.Mesh | null = null;
   private respawnTimers: { type: EnemyType; x: number; z: number; t: number }[] = [];
   private guideMesh: THREE.Mesh;
+  appearance: Appearance = { ...DEFAULT_APPEARANCE }; playerName = '미루'; private createYaw = 0;
   private dayT = 0.32; private fsKeyHeld = false;
 
   constructor(canvas: HTMLCanvasElement) {
@@ -139,7 +160,7 @@ export class Game {
     const ui = this.ui;
     ui.onMenu = (a) => {
       switch (a) {
-        case 'new': this.audio.unlock(); Fullscreen.enter(); this.newGame(); break;
+        case 'new': this.audio.unlock(); Fullscreen.enter(); this.openCreator(); break;
         case 'continue': this.audio.unlock(); Fullscreen.enter(); this.continueGame(); break;
         case 'fullscreen': Fullscreen.toggle(); if (ui.panelOpen === 'pause') ui.closePanel(); break;
         case 'settings': ui.settings(this.settings); break;
@@ -197,7 +218,42 @@ export class Game {
     this.region = '';
     this.fpsAcc = []; this.autoChecked = false;
   }
+  openCreator() {
+    this.ui.title(false, false); this.ui.closePanel();
+    this.mode = 'create';
+    this.setArea('island', true);
+    this.player.place(L.START.x, L.START.z, 0.3);
+    this.createYaw = 0.3;
+    this.player.setLook(lookFrom(this.appearance));
+    const groups = [
+      { key: 'gender', label: '성별', type: 'choice' as const, options: [{ value: 'f', label: '여자' }, { value: 'm', label: '남자' }] },
+      { key: 'style', label: '헤어', type: 'choice' as const, options: [{ value: 'hero', label: '묶은 머리' }, { value: 'bob', label: '단발' }, { value: 'short', label: '짧은 머리' }, { value: 'braids', label: '양갈래' }] },
+      { key: 'hair', label: '머리색', type: 'swatch' as const, options: Object.entries(HAIR).map(([k, v]) => ({ value: k, color: '#' + v[1].toString(16).padStart(6, '0'), label: v[2] })) },
+      { key: 'skin', label: '피부색', type: 'swatch' as const, options: Object.entries(SKIN).map(([k, v]) => ({ value: k, color: '#' + v.toString(16).padStart(6, '0') })) },
+      { key: 'eye', label: '눈 색', type: 'swatch' as const, options: Object.entries(EYE).map(([k, v]) => ({ value: k, color: '#' + v.toString(16).padStart(6, '0') })) },
+      { key: 'eyeSize', label: '눈 크기', type: 'range' as const, min: 0.8, max: 1.35, step: 0.05 },
+      { key: 'outfit', label: '옷', type: 'swatch' as const, options: Object.entries(OUTFIT).map(([k, v]) => ({ value: k, color: '#' + v.tunic.toString(16).padStart(6, '0'), label: v.label })) },
+    ];
+    const show = () => this.ui.creator({ name: this.playerName, groups, values: this.appearance as unknown as Record<string, string> },
+      (k, v) => {
+        if (k === 'name') { this.playerName = v || '미루'; return; }
+        (this.appearance as any)[k] = v;
+        if (k === 'gender') { this.appearance.style = v === 'm' ? 'short' : 'hero'; show(); }
+        this.player.setLook(lookFrom(this.appearance));
+      },
+      () => {
+        const pick = <T,>(a: T[]) => a[Math.floor(Math.random() * a.length)];
+        const g = pick(['f', 'm']) as 'f' | 'm';
+        this.appearance = { gender: g, style: pick(g === 'm' ? ['short', 'short', 'bob', 'hero'] : ['hero', 'bob', 'braids', 'short']), hair: pick(Object.keys(HAIR)), skin: pick(Object.keys(SKIN)), eye: pick(Object.keys(EYE)), eyeSize: (0.85 + Math.random() * 0.45).toFixed(2), outfit: pick(Object.keys(OUTFIT)) };
+        this.player.setLook(lookFrom(this.appearance)); show();
+      },
+      (name) => { this.playerName = name; this.newGame(); },
+      (d) => { this.createYaw += d; });
+    show();
+  }
   newGame() {
+    this.ui.hideCreator();
+    this.quest.name = this.playerName; this.quest.gender = this.appearance.gender;
     this.inv.load({}); this.quest.load([]); this.playTime = 0;
     for (const c of this.chests.values()) this.resetChest(c, false);
     this.world.veg.restoreBushes(null);
@@ -209,10 +265,13 @@ export class Game {
     this.setArea('island', true);
     this.player.place(L.START.x, L.START.z, L.START.yaw);
     this.beginPlay();
-    this.say([{ who: '미루', text: '음… 바람 소리가 하나도 안 들려. 소라 할머니한테 가 봐야겠다.' }]);
+    this.player.setLook(lookFrom(this.appearance));
+    this.say([{ who: this.playerName, text: '음… 바람 소리가 하나도 안 들려. 소라 할머니한테 가 봐야겠다.' }]);
   }
   continueGame() {
-    const d = Save.read(); if (!d) { this.newGame(); return; }
+    const d = Save.read(); if (!d) { this.openCreator(); return; }
+    this.appearance = { ...DEFAULT_APPEARANCE, ...(d.appearance ?? {}) }; this.playerName = d.name ?? '미루'; this.quest.name = this.playerName; this.quest.gender = this.appearance.gender;
+    this.inv.load(d.inventory); this.player.setLook(lookFrom(this.appearance));
     this.inv.load(d.inventory); this.quest.load(d.flags); this.playTime = d.playTime ?? 0;
     for (const c of this.chests.values()) this.resetChest(c, d.chests.includes(c.def.id));
     this.world.veg.restoreBushes(d.bushes ?? []);
@@ -242,7 +301,7 @@ export class Game {
     const D = this.dungeon;
     const d: SaveData = {
       v: 1, time: Date.now(), pos: [p.x, p.y, p.z], yaw: this.player.yaw, area: this.area, hp: this.player.hp,
-      inventory: this.inv.toJSON(), flags: this.quest.toJSON(), chests: [...this.chests.values()].filter((c) => c.opened).map((c) => c.def.id),
+      inventory: this.inv.toJSON(), flags: this.quest.toJSON(), appearance: this.appearance, name: this.playerName, chests: [...this.chests.values()].filter((c) => c.opened).map((c) => c.def.id),
       bushes: this.world.veg.bushes.filter((b) => !b.alive).map((b) => b.index), pots: this.world.pots.filter((x) => !x.alive).map((x) => x.id),
       dungeon: { torches: D.torchesA.torches.map((t) => t.lit), block: [D.blockB.col.x, D.blockB.col.z], doorC: D.doorC.open, bossDead: this.quest.has('bossDead'), keyChest: this.quest.has('keyChest') },
       playTime: this.playTime,
@@ -333,6 +392,7 @@ export class Game {
     const r = Math.random();
     if (r < 0.3 && this.player.hp < this.player.maxHp) this.dropItem('heart', p);
     else if (r < 0.75) this.dropItem('shell', p, Math.random() < 0.25 ? 5 : 1);
+    else if (r < 0.83) this.dropItem('berry', p);
   }
   private checkRoomClear() {
     const inC = this.enemies.filter((e) => Math.abs(e.home.z + 40) < 8 && !e.dead).length;
@@ -351,7 +411,7 @@ export class Game {
   private slam(p: THREE.Vector3) {
     this.particles.dust(p, 18);
     for (const e of this.enemies) if (!e.dead && Math.hypot(e.pos.x - p.x, e.pos.z - p.z) < 2.6 + e.radius && e.lastSwing !== this.player.swingId) {
-      e.lastSwing = this.player.swingId; e.damage(2, p, 9); this.onHitFx(e.pos.clone().setY(e.pos.y + 0.8));
+      e.lastSwing = this.player.swingId; e.damage(2 * this.inv.weaponDmg(), p, 9); this.onHitFx(e.pos.clone().setY(e.pos.y + 0.8));
     }
   }
   private onHitFx(at: THREE.Vector3) { this.particles.hit(at); this.audio.play('hit'); this.hitstop = 0.065; this.shake(0.22); }
@@ -385,12 +445,34 @@ export class Game {
     if (n.id === 'elder') this.quest.set('metElder');
     this.say(this.quest.npcLines(n.id), (v) => {
       n.talking = false;
+      if (v === 'shop') { this.openShop(); return; }
       if (v === 'buyBerry') {
         if (this.inv.take('shell', 10)) { this.inv.add('berry'); this.ui.shells(this.inv.count('shell')); this.audio.play('smallGet'); this.say([{ who: '다래', text: '고마워! 맛있게 먹어. 체력이 떨어지면 가방에서 꺼내 먹으면 돼.' }]); }
         else this.say([{ who: '다래', text: '어라, 조개가 모자라네. 풀숲이나 항아리를 살펴보면 조개가 나올 거야!' }]);
       }
       if (n.id === 'elder') events.emit('quest');
     });
+  }
+  openShop() {
+    const render = () => {
+      const items = L.SHOP.map((it) => {
+        const d = ITEMS[it.id], owned = d.kind !== 'consumable' && this.inv.has(it.id);
+        const e = this.inv.equipped as Record<string, string>;
+        return { ...it, owned, equipped: owned && Object.values(e).includes(it.id), afford: this.inv.count(it.currency) >= it.price };
+      });
+      this.ui.shop(items, { shell: this.inv.count('shell'), berry: this.inv.count('berry') }, (id) => {
+        const it = L.SHOP.find((x) => x.id === id)!;
+        if (!this.inv.take(it.currency, it.price)) { this.ui.toast('값이 모자라요'); return; }
+        this.inv.add(id);
+        if (ITEMS[id].kind !== 'consumable') this.inv.wear(id);
+        if (ITEMS[id].kind === 'armor') this.player.hp = Math.min(this.player.hp + (ITEMS[id].hearts ?? 0) * 2, this.player.maxHp);
+        this.audio.play('itemGet');
+        this.ui.toast(`${ITEMS[id].name}을(를) 샀어요${ITEMS[id].kind !== 'consumable' ? ' · 바로 장착했어요' : ''}`);
+        this.ui.shells(this.inv.count('shell')); this.save();
+        render();
+      });
+    };
+    render();
   }
   private openChest(c: ChestEnt) {
     c.opened = true; this.audio.play('chest');
@@ -428,16 +510,16 @@ export class Game {
     if (it.id === 'moonPearl') this.audio.setTheme('dungeon');
   }
   private enterCave() {
-    if (!this.inv.has('lantern')) { this.say([{ who: '미루', text: '안이 너무 깜깜해서 한 발짝도 못 들어가겠어. 등불이 있어야 해.' }]); return; }
+    if (!this.inv.has('lantern')) { this.say([{ who: this.playerName, text: '안이 너무 깜깜해서 한 발짝도 못 들어가겠어. 등불이 있어야 해.' }]); return; }
     this.quest.set('enteredCave');
     this.transitionTo('dungeon', DUNGEON_ENTRY.x, DUNGEON_ENTRY.z, DUNGEON_ENTRY.yaw);
   }
   private unlockDoor() {
-    if (!this.inv.has('smallKey')) { this.say([{ who: '미루', text: '단단히 잠겨 있어. 작은 열쇠가 필요해 보여.' }]); return; }
+    if (!this.inv.has('smallKey')) { this.say([{ who: this.playerName, text: '단단히 잠겨 있어. 작은 열쇠가 필요해 보여.' }]); return; }
     this.inv.take('smallKey'); this.dungeon.doorC.setOpen(true); this.audio.play('solve'); this.ui.equip(this.inv, this.touch.enabled); this.save();
   }
   private lightTorch(i: number) {
-    if (!this.inv.has('lantern')) { this.say([{ who: '미루', text: '불을 붙일 무언가가 필요해.' }]); return; }
+    if (!this.inv.has('lantern')) { this.say([{ who: this.playerName, text: '불을 붙일 무언가가 필요해.' }]); return; }
     const T = this.dungeon.torchesA;
     if (T.light(i)) {
       this.particles.sparkle(T.torches[i].position.clone().setY(2), 0x9fe8ff, 18);
@@ -495,11 +577,12 @@ export class Game {
 
     if (this.input.keys.has('KeyO') && !this.fsKeyHeld) { this.fsKeyHeld = true; Fullscreen.toggle(); }
     if (!this.input.keys.has('KeyO')) this.fsKeyHeld = false;
-    if (this.input.wasPressed('pause') && this.mode !== 'title') { if (this.ui.panelOpen) this.ui.closePanel(); else this.ui.pause(); }
-    if (this.input.wasPressed('inventory') && this.mode !== 'title') { if (this.ui.panelOpen === 'inventory') this.ui.closePanel(); else if (!this.ui.dialogOpen) this.openInventory(); }
+    if (this.input.wasPressed('pause') && this.mode !== 'title' && this.mode !== 'create') { if (this.ui.panelOpen) this.ui.closePanel(); else this.ui.pause(); }
+    if (this.input.wasPressed('inventory') && this.mode !== 'title' && this.mode !== 'create') { if (this.ui.panelOpen === 'inventory') this.ui.closePanel(); else if (!this.ui.dialogOpen) this.openInventory(); }
 
     const paused = !!this.ui.panelOpen;
     if (this.mode === 'title') this.updateTitle(dt);
+    else if (this.mode === 'create') this.updateCreate(dt);
     else if (!paused) this.updateGame(dt);
     this.input.endFrame();
 
@@ -521,6 +604,24 @@ export class Game {
       else this.autoChecked = true;
     }
   }
+  private updateCreate(dt: number) {
+    const P = this.player;
+    P.yaw += (this.createYaw - P.yaw) * (1 - Math.exp(-dt * 6));
+    P.rig.root.rotation.y = P.yaw;
+    P.rig.root.position.copy(P.pos);
+    P.anim.update(dt, { speed: 0, maxSpeed: 7, grounded: true, vy: 0, turnRate: 0, action: 'none', actionT: 0, combo: 0, landT: 1, dist: 0 });
+    // portrait framing: hero on the left on wide screens, upper half on phones
+    const narrow = innerWidth < 700;
+    const side = narrow ? 0 : 1.1;
+    const tx = P.pos.x + Math.cos(this.createYaw0) * side, tz = P.pos.z - Math.sin(this.createYaw0) * side;
+    const target = new THREE.Vector3(tx, P.pos.y + (narrow ? 0.35 : 0.85), tz);
+    const camPos = new THREE.Vector3(P.pos.x + Math.sin(this.createYaw0) * 4.6, P.pos.y + 1.6, P.pos.z + Math.cos(this.createYaw0) * 4.6);
+    this.cam.position.lerp(camPos, 1 - Math.exp(-dt * 5));
+    this.cam.lookAt(target);
+    this.world.update(dt, this.time, P.pos);
+    this.particles.update(dt);
+  }
+  private createYaw0 = 0.3;
   private updateTitle(dt: number) {
     const a = this.time * 0.05;
     const c = new THREE.Vector3(Math.sin(a) * 52, 30, 22 + Math.cos(a) * 52);
@@ -530,7 +631,7 @@ export class Game {
     this.npcs.forEach((n) => n.update(dt, new THREE.Vector3(999, 0, 999)));
     this.player.anim.update(dt, { speed: 0, maxSpeed: 7, grounded: true, vy: 0, turnRate: 0, action: 'none', actionT: 0, combo: 0, landT: 1, dist: 0 });
     this.particles.update(dt);
-    if (this.input.wasPressed('interact') && !this.ui.panelOpen) { this.audio.unlock(); Fullscreen.enter(); Save.read() ? this.continueGame() : this.newGame(); }
+    if (this.input.wasPressed('interact') && !this.ui.panelOpen) { this.audio.unlock(); Fullscreen.enter(); Save.read() ? this.continueGame() : this.openCreator(); }
   }
 
   private updateGame(dtRaw: number) {
@@ -582,16 +683,17 @@ export class Game {
         if (e.dead || e.lastSwing === P.swingId) continue;
         const dx = e.pos.x - P.pos.x, dz = e.pos.z - P.pos.z, d = Math.hypot(dx, dz);
         const eh = e.type === 'moth' ? e.pos.y + 1.6 : e.pos.y + 0.6;
-        if (d > a.reach + e.radius || Math.abs(eh - (P.pos.y + 0.8)) > (e.type === 'boss' ? 3 : 1.6)) continue;
+        const reach = a.reach + this.inv.weaponReach();
+        if (d > reach + e.radius || Math.abs(eh - (P.pos.y + 0.8)) > (e.type === 'boss' ? 3 : 1.6)) continue;
         if (a.arc < 6 && Math.abs(angleDiff(P.yaw, Math.atan2(dx, dz))) > a.arc / 2 + 0.3) continue;
-        e.lastSwing = P.swingId; e.damage(a.dmg, P.pos);
+        e.lastSwing = P.swingId; e.damage(a.dmg * this.inv.weaponDmg(), P.pos);
         this.onHitFx(new THREE.Vector3(e.pos.x - dx / d * e.radius * 0.7, eh, e.pos.z - dz / d * e.radius * 0.7));
       }
       // bushes & pots
       const cut = this.world.veg.cutBushAt(reachPt.x, reachPt.z, a.name === 'spin' ? 2.0 : 1.0);
       for (const b of cut) {
         this.particles.leaves(new THREE.Vector3(b.x, b.y + 0.6, b.z)); this.audio.play('cut');
-        const r = Math.random(); if (r < 0.28) this.dropItem('shell', new THREE.Vector3(b.x, b.y + 0.5, b.z)); else if (r < 0.38) this.dropItem('heart', new THREE.Vector3(b.x, b.y + 0.5, b.z));
+        const r = Math.random(); if (r < 0.28) this.dropItem('shell', new THREE.Vector3(b.x, b.y + 0.5, b.z)); else if (r < 0.38) this.dropItem('heart', new THREE.Vector3(b.x, b.y + 0.5, b.z)); else if (r < 0.45) this.dropItem('berry', new THREE.Vector3(b.x, b.y + 0.5, b.z));
       }
       for (const pot of this.world.pots) if (pot.alive && Math.hypot(pot.x - reachPt.x, pot.z - reachPt.z) < (a.name === 'spin' ? 2.2 : 1.3)) {
         pot.alive = false; pot.obj.visible = false; pot.collider.active = false; this.audio.play('pot');
@@ -713,6 +815,7 @@ export class Game {
     const P = this.player;
     if (k.id === 'heart') { P.heal(2); this.audio.play('heal'); }
     else if (k.id === 'shell') { this.inv.add('shell', k.count); this.audio.play('smallGet'); }
+    else if (k.id === 'berry') { this.inv.add('berry', k.count); this.audio.play('smallGet'); this.ui.toast('회복 열매를 주웠어요'); }
     else { this.giveItem(k.id, k.count); return; }
     this.particles.sparkle(k.pos.clone(), k.id === 'heart' ? 0xff8aa0 : 0xfff0d0, 6);
   }
@@ -788,6 +891,8 @@ export class Game {
       const hw = cx - m, hh = cy - m, dx = Math.cos(ang), dy = Math.sin(ang);
       const k = Math.min(hw / Math.abs(dx || 1e-6), hh / Math.abs(dy || 1e-6));
       sx = cx + dx * k; sy = cy + dy * k;
+      // keep clear of the hearts/quest card (top-left) and minimap (top-right)
+      if (sy < 190 && (sx < 300 || sx > innerWidth - 220)) sy = 190;
     }
     this.ui.guide({ x: sx, y: sy, angle: ang, onScreen, label: g.label, dist: Math.round(dist) });
   }

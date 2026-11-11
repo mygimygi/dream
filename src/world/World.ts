@@ -81,6 +81,7 @@ export class World {
       // a lantern post beside each door
       place(P.lanternPost(), h.x + dx * 4 + dz * 1.5, h.z + dz * 4 - dx * 1.5, yaw + Math.PI / 2);
     }
+    { const st = L.SMITH_STALL; place(P.smithStall(), st.x, st.z, Math.PI); this.col.box(st.x, st.z, 1.75, 0.55, 0, -5, 3); ex(st.x, st.z + 0.5, 3); }
     place(P.well(), L.WELL.x, L.WELL.z); this.col.circle(L.WELL.x, L.WELL.z, 1.5, -10, 5); ex(L.WELL.x, L.WELL.z, 3);
     // fences around the hero's garden and along the plaza
     const fences: [number, number, number, number][] = [[17, 9, 8, 0.9], [21, 14, 7, 1.57], [20, 20, 5, 0.2], [-24, 30, 7, 0.6], [-6, 42, 6, 0.1], [7, 41, 6, -0.1], [-19, 9, 6, -0.4]];

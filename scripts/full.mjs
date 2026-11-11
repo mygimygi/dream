@@ -7,6 +7,7 @@ export default {
     const { page, G, frames, shot, key } = ctx;
     const log = async (t) => console.log(t, JSON.stringify(await state(G)));
     await page.click('[data-m=new]'); await frames(4);
+    await page.click('[data-cr=done]'); await frames(4);
     await closeDialogs(ctx);
     await log('start');
     // walk forward a bit with real keys

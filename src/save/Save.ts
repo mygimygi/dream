@@ -4,7 +4,7 @@ const SKEY = 'wave-isle-settings-v1';
 export interface SaveData {
   v: 1; time: number; pos: [number, number, number]; yaw: number; area: 'island' | 'dungeon'; hp: number;
   inventory: any; flags: string[]; chests: string[]; bushes: number[]; pots: number[]; dungeon: { torches: boolean[]; block: [number, number]; doorC: boolean; bossDead: boolean; keyChest: boolean };
-  playTime: number; starShards?: number;
+  playTime: number; starShards?: number; appearance?: any; name?: string;
 }
 export interface Settings { quality: 'auto' | 'low' | 'medium' | 'high'; music: number; sfx: number; sens: number; shake: boolean; }
 export const DEFAULT_SETTINGS: Settings = { quality: 'auto', music: 0.6, sfx: 0.8, sens: 1, shake: true };

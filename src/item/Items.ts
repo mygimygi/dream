@@ -3,11 +3,17 @@ import { toy } from '../render/Materials';
 import { shieldModel, swordModel } from '../character/Humanoid';
 import { at, colorize, cyl, gradient, lathe, merge, rbox, sphere } from '../world/Geo';
 
-export type ItemKind = 'weapon' | 'shield' | 'tool' | 'consumable' | 'upgrade' | 'key' | 'quest' | 'currency' | 'treasure';
-export interface ItemDef { id: string; name: string; desc: string; kind: ItemKind; stack?: boolean; }
+export type ItemKind = 'weapon' | 'shield' | 'armor' | 'tool' | 'consumable' | 'upgrade' | 'key' | 'quest' | 'currency' | 'treasure';
+export interface ItemDef { id: string; name: string; desc: string; kind: ItemKind; stack?: boolean;
+  dmg?: number; reach?: number; hearts?: number; guardArc?: number; tier?: number; }
 export const ITEMS: Record<string, ItemDef> = {
-  sword: { id: 'sword', name: '산호검', kind: 'weapon', desc: '바닷가 산호목을 깎아 만든 가벼운 검. 공격을 이어 누르면 세 번째 타격이 회전 베기가 된다.' },
-  shield: { id: 'shield', name: '소라 방패', kind: 'shield', desc: '소라 껍데기 문양이 새겨진 둥근 방패. 방어 중에는 정면 공격을 막는다.' },
+  sword: { id: 'sword', name: '산호검', kind: 'weapon', dmg: 1, tier: 1, desc: '바닷가 산호목을 깎아 만든 가벼운 검. 공격을 이어 누르면 세 번째 타격이 회전 베기가 된다.' },
+  steelSword: { id: 'steelSword', name: '푸른 강철검', kind: 'weapon', dmg: 2, tier: 2, desc: '대장장이 바위가 벼린 푸른빛 강철검. 공격력이 산호검의 두 배.' },
+  whaleSword: { id: 'whaleSword', name: '고래뼈 대검', kind: 'weapon', dmg: 3, reach: 0.4, tier: 3, desc: '바다에 떠밀려 온 고래뼈를 깎은 대검. 공격력이 가장 높고 칼날이 길어 더 멀리 닿는다.' },
+  turtleShield: { id: 'turtleShield', name: '거북 등껍질 방패', kind: 'shield', guardArc: 1.75, desc: '넓고 단단한 거북 등껍질 방패. 더 넓은 각도의 공격을 막고 밀려나는 힘이 줄어든다.' },
+  leatherVest: { id: 'leatherVest', name: '가죽 조끼', kind: 'armor', hearts: 1, desc: '질긴 가죽으로 만든 조끼. 입고 있으면 최대 체력이 하트 1칸 늘어난다.' },
+  shellArmor: { id: 'shellArmor', name: '조개껍데기 갑옷', kind: 'armor', hearts: 2, desc: '커다란 조개껍데기를 이어 붙인 갑옷. 입고 있으면 최대 체력이 하트 2칸 늘어난다.' },
+  shield: { id: 'shield', name: '소라 방패', kind: 'shield', guardArc: 1.25, desc: '소라 껍데기 문양이 새겨진 둥근 방패. 방어 중에는 정면 공격을 막는다.' },
   lantern: { id: 'lantern', name: '바다불 등불', kind: 'tool', desc: '꺼지지 않는 푸른 불. 도구로 쓰면 앞쪽 횃불에 불을 붙이고, 어두운 동굴을 밝혀 준다.' },
   berry: { id: 'berry', name: '회복 열매', kind: 'consumable', stack: true, desc: '새콤달콤한 섬 열매. 먹으면 하트 3칸을 회복한다.' },
   heartContainer: { id: 'heartContainer', name: '하트 그릇', kind: 'upgrade', desc: '최대 체력이 하트 1칸 늘어나고 체력이 모두 회복된다.' },
@@ -48,8 +54,17 @@ export function itemModel(id: string): THREE.Object3D {
   const g = new THREE.Group();
   const M = (geo: THREE.BufferGeometry, m: THREE.Material = itemMat) => { const o = new THREE.Mesh(geo, m); o.castShadow = true; g.add(o); return o; };
   switch (id) {
-    case 'sword': { const s = swordModel(); s.scale.setScalar(1.3); s.rotation.z = -0.6; s.position.y = -0.3; g.add(s); break; }
-    case 'shield': { const s = shieldModel(); s.scale.setScalar(1.6); g.add(s); break; }
+    case 'sword': case 'steelSword': case 'whaleSword': { const s = swordModel(ITEMS[id].tier); s.scale.setScalar(1.3); s.rotation.z = -0.6; s.position.y = -0.3; g.add(s); break; }
+    case 'shield': case 'turtleShield': { const s = shieldModel(id); s.scale.setScalar(1.6); g.add(s); break; }
+    case 'leatherVest': case 'shellArmor': {
+      const shell = id === 'shellArmor';
+      const v = lathe([[0.0, 0.0], [0.3, 0.0], [0.34, 0.2], [0.33, 0.45], [0.26, 0.6], [0.0, 0.6]], 24);
+      if (shell) gradient(v, 0xd8a090, 0xfff0e6, 0, 0.6); else colorize(v, 0x9a6a3e, 0.15, 3);
+      M(at(v, 0, -0.3, 0));
+      M(colorize(at(new THREE.TorusGeometry(0.34, 0.03, 6, 22), 0, -0.05, 0, Math.PI / 2, 0, 0), shell ? 0xe8b8a8 : 0x5a3a22));
+      if (shell) for (const sg of [-1, 1]) M(gradient(at(sphere(0.15, 14, 10), sg * 0.33, 0.25, 0, 0, 0, sg * 0.3, [1.1, 0.6, 1]), 0xd8a090, 0xfff0e6, 0.2, 0.32));
+      break;
+    }
     case 'lantern': {
       M(colorize(lathe([[0, 0], [0.16, 0], [0.18, 0.04], [0.12, 0.08], [0, 0.08]], 14), 0x6a5a48));
       M(colorize(at(lathe([[0, 0], [0.17, 0], [0.19, 0.04], [0.1, 0.1], [0.04, 0.14], [0, 0.15]], 14), 0, 0.42, 0), 0x6a5a48));

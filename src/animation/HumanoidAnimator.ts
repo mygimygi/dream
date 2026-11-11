@@ -213,7 +213,7 @@ export class HumanoidAnimator {
     const blink = this.blinkT < 0.12 && this.blinkT > 0;
     if (this.blinkT < 0) this.blinkT = 2 + Math.random() * 3;
     const hurt = s.action === 'hit' || s.action === 'dead';
-    for (const e of r.eyes) e.scale.y = blink || hurt ? 0.12 : 1;
+    for (const e of r.eyes) e.scale.y = (blink || hurt ? 0.12 : 1) * r.eyeScale;
     const open = s.action === 'attack' || s.action === 'hit' || s.action === 'itemGet' || s.action === 'jumpAttack';
     r.mouth.scale.set(open ? 1.3 : 1, open ? 1.8 : 1, 1);
   }
