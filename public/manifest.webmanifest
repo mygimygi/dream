@@ -1,0 +1,11 @@
+{
+  "name": "파도섬 이야기",
+  "short_name": "파도섬",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#cfe9f6",
+  "theme_color": "#2f9e94",
+  "icons": [{ "src": "icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }]
+}

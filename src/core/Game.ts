@@ -24,6 +24,7 @@ import { Save, SaveData, Settings } from '../save/Save';
 import { TouchControls } from '../mobile/TouchControls';
 import { Dungeon, DUNGEON_ENTRY, DX, ROOMS } from '../dungeon/Dungeon';
 import { Gate, Plate, PushBlock } from '../puzzle/Puzzles';
+import { Fullscreen } from '../mobile/Fullscreen';
 
 type Mode = 'title' | 'play' | 'itemget' | 'dead' | 'ending' | 'transition';
 interface Pickup { obj: THREE.Object3D; id: string; pos: THREE.Vector3; vel: THREE.Vector3; t: number; big: boolean; count: number; }
@@ -43,7 +44,7 @@ export class Game {
   private lantern: THREE.PointLight; private interactTarget: { label: string; act: () => void } | null = null;
   private boss: Enemy | null = null; private altarPearl: THREE.Object3D | null = null; private beam: THREE.Mesh | null = null;
   private respawnTimers: { type: EnemyType; x: number; z: number; t: number }[] = [];
-  private dayT = 0.32;
+  private dayT = 0.32; private fsKeyHeld = false;
 
   constructor(canvas: HTMLCanvasElement) {
     this.settings = Save.settings();
@@ -94,7 +95,10 @@ export class Game {
     this.world.onSign = (text) => this.say([{ who: '', text: text.replace(/\n/g, ' · ') }]);
     this.wireEvents();
     this.wireUI();
-    addEventListener('resize', () => { this.rs.resize(); this.particles.setScale(innerHeight); });
+    const onResize = () => { this.rs.resize(); this.particles.setScale(innerHeight); };
+    addEventListener('resize', onResize);
+    Fullscreen.onChange(() => { this.ui.setFullscreenState(Fullscreen.active(), Fullscreen.supported()); setTimeout(onResize, 120); });
+    this.ui.setFullscreenState(false, Fullscreen.supported());
     this.particles.setScale(innerHeight);
     (window as any).__game = this;
     this.toTitle();
@@ -129,8 +133,9 @@ export class Game {
     const ui = this.ui;
     ui.onMenu = (a) => {
       switch (a) {
-        case 'new': this.audio.unlock(); this.newGame(); break;
-        case 'continue': this.audio.unlock(); this.continueGame(); break;
+        case 'new': this.audio.unlock(); Fullscreen.enter(); this.newGame(); break;
+        case 'continue': this.audio.unlock(); Fullscreen.enter(); this.continueGame(); break;
+        case 'fullscreen': Fullscreen.toggle(); if (ui.panelOpen === 'pause') ui.closePanel(); break;
         case 'settings': ui.settings(this.settings); break;
         case 'help': ui.help(this.touch.enabled); break;
         case 'back': if (this.mode === 'title') ui.closePanel(); else ui.pause(); break;
@@ -482,6 +487,8 @@ export class Game {
     this.time += dt;
     U.uTime.value = this.time;
 
+    if (this.input.keys.has('KeyO') && !this.fsKeyHeld) { this.fsKeyHeld = true; Fullscreen.toggle(); }
+    if (!this.input.keys.has('KeyO')) this.fsKeyHeld = false;
     if (this.input.wasPressed('pause') && this.mode !== 'title') { if (this.ui.panelOpen) this.ui.closePanel(); else this.ui.pause(); }
     if (this.input.wasPressed('inventory') && this.mode !== 'title') { if (this.ui.panelOpen === 'inventory') this.ui.closePanel(); else if (!this.ui.dialogOpen) this.openInventory(); }
 
@@ -517,7 +524,7 @@ export class Game {
     this.npcs.forEach((n) => n.update(dt, new THREE.Vector3(999, 0, 999)));
     this.player.anim.update(dt, { speed: 0, maxSpeed: 7, grounded: true, vy: 0, turnRate: 0, action: 'none', actionT: 0, combo: 0, landT: 1, dist: 0 });
     this.particles.update(dt);
-    if (this.input.wasPressed('interact') && !this.ui.panelOpen) { this.audio.unlock(); Save.read() ? this.continueGame() : this.newGame(); }
+    if (this.input.wasPressed('interact') && !this.ui.panelOpen) { this.audio.unlock(); Fullscreen.enter(); Save.read() ? this.continueGame() : this.newGame(); }
   }
 
   private updateGame(dtRaw: number) {

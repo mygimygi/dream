@@ -3,7 +3,7 @@ export type Action = 'attack' | 'jump' | 'roll' | 'guard' | 'interact' | 'tool' 
 
 const KEYMAP: Record<string, Action> = {
   KeyJ: 'attack', KeyK: 'roll', Space: 'jump', KeyL: 'guard', KeyE: 'interact', KeyF: 'interact', KeyQ: 'tool',
-  ShiftLeft: 'run', ShiftRight: 'run', Escape: 'pause', KeyP: 'pause', KeyI: 'inventory', Tab: 'inventory', KeyM: 'map',
+  ShiftLeft: 'run', ShiftRight: 'run', Escape: 'pause',  KeyP: 'pause', KeyI: 'inventory', Tab: 'inventory', KeyM: 'map',
   Enter: 'interact',
 };
 

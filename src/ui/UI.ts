@@ -29,7 +29,7 @@ export class UI {
     this.root.innerHTML = `
       <div class="hud" data-k="hud" hidden>
         <div class="hud-top"><div class="hearts" data-k="hearts"></div><div class="money" data-k="money"><img alt="" data-k="shellIcon"><span data-k="shells">0</span></div><div class="quest" data-k="quest"><b></b><span></span></div></div>
-        <div class="hud-right"><div class="iconbtns"><button class="rbtn pe" data-k="btnInv" aria-label="인벤토리">🎒</button><button class="rbtn pe" data-k="btnPause" aria-label="일시정지">Ⅱ</button></div>
+        <div class="hud-right"><div class="iconbtns"><button class="rbtn pe" data-k="btnFull" aria-label="전체화면">⛶</button><button class="rbtn pe" data-k="btnInv" aria-label="인벤토리">🎒</button><button class="rbtn pe" data-k="btnPause" aria-label="일시정지">Ⅱ</button></div>
           <div class="minimap" data-k="mm"></div><div class="mm-name" data-k="mmName"></div></div>
         <div class="equip" data-k="equip"></div>
         <div class="bossbar" data-k="boss" hidden><b>가시고둥왕</b><div class="bar"><i data-k="bossFill"></i></div></div>
@@ -49,6 +49,7 @@ export class UI {
     this.root.querySelectorAll<HTMLElement>('[data-m]').forEach((b) => b.addEventListener('click', () => { this.sfx('ui'); this.onMenu?.(b.dataset.m!); }));
     this.el.btnInv.addEventListener('click', () => { this.sfx('ui'); this.onMenu?.('inventory'); });
     this.el.btnPause.addEventListener('click', () => { this.sfx('ui'); this.onMenu?.('pause'); });
+    this.el.btnFull.addEventListener('click', () => { this.sfx('ui'); this.onMenu?.('fullscreen'); });
     this.el.dialog.addEventListener('pointerdown', (e) => { if ((e.target as HTMLElement).closest('.btn')) return; this.advance(); });
     this.el.panel.addEventListener('pointerdown', (e) => { if (e.target === this.el.panel) this.onMenu?.('close'); });
   }
@@ -152,9 +153,14 @@ export class UI {
   deadPanel() {
     this.panel('dead', `<h2>쓰러지고 말았어요…</h2><p style="margin:0 0 16px">모은 물건은 그대로 남아 있어요.</p><div class="menu"><button class="btn primary" data-m="retry">다시 일어나기</button><button class="btn" data-m="toTitle">타이틀로</button></div>`);
   }
+  setFullscreenState(active: boolean, supported: boolean) {
+    this.el.btnFull.hidden = !supported;
+    this.el.btnFull.textContent = active ? '🗗' : '⛶';
+    this.el.btnFull.setAttribute('aria-label', active ? '전체화면 끄기' : '전체화면');
+  }
   pause() {
     this.panel('pause', `<h2>일시정지</h2><div class="menu">
-      <button class="btn primary" data-m="close">계속하기</button><button class="btn" data-m="inventory">가방</button>
+      <button class="btn primary" data-m="close">계속하기</button><button class="btn" data-m="fullscreen">전체화면 켜기/끄기</button><button class="btn" data-m="inventory">가방</button>
       <button class="btn teal" data-m="save">저장하기</button><button class="btn" data-m="settings">설정</button>
       <button class="btn" data-m="help">조작 방법</button><button class="btn" data-m="toTitle">타이틀로</button></div>`);
   }
