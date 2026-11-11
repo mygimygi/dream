@@ -32,20 +32,22 @@ export class Minimap {
     }
     b.putImageData(img, 0, 0);
   }
+  /** Camera-aligned minimap: whatever is "up" on screen is "up" on the map, so pushing forward
+   *  always moves the arrow toward the top. A rim "N" marks north. */
   draw(px: number, pz: number, yaw: number, camYaw: number, dungeon: boolean, room: number) {
     const x = this.ctx, S = 300;
     x.save(); x.clearRect(0, 0, S, S);
+    x.translate(S / 2, S / 2);
+    x.rotate(camYaw);
     if (dungeon) {
-      x.fillStyle = '#26303a'; x.fillRect(0, 0, S, S);
-      const sc = 3.2, cx = S / 2 - (px - 1000) * sc, cz = S / 2 - (pz + 30) * sc * 0.0 - 0;
-      x.translate(S / 2, S / 2); x.scale(sc, sc); x.translate(-px, -pz);
+      x.fillStyle = '#26303a'; x.fillRect(-S, -S, S * 2, S * 2);
+      const sc = 3.2;
+      x.scale(sc, sc); x.translate(-px, -pz);
       ROOMS.forEach((r, i) => { x.fillStyle = i === room ? '#8fd0d8' : '#5a7a88'; x.beginPath(); x.roundRect(r.x - r.hx, r.z - r.hz, r.hx * 2, r.hz * 2, 2); x.fill(); });
       x.fillStyle = '#5a7a88'; x.fillRect(998, -55, 4, 50);
-      void cx; void cz;
     } else {
-      const zoom = 2.2; // map pixels per world unit on the 300px canvas
-      x.translate(S / 2, S / 2);
-      x.scale(zoom * (300 / 256) * (256 / (WORLD_HALF * 2)) * (256 / 300) * 1.17, zoom * (300 / 256) * (256 / (WORLD_HALF * 2)) * (256 / 300) * 1.17);
+      const zoom = 2.2 * (256 / (WORLD_HALF * 2)) * 1.17; // canvas px per map px
+      x.scale(zoom, zoom);
       const k = 256 / (WORLD_HALF * 2);
       x.translate(-(px + WORLD_HALF) * k, -(pz + WORLD_HALF) * k);
       x.imageSmoothingEnabled = true;
@@ -54,20 +56,27 @@ export class Minimap {
         const mx = (m.x + WORLD_HALF) * k, mz = (m.z + WORLD_HALF) * k;
         x.fillStyle = m.color; x.strokeStyle = '#4a3424'; x.lineWidth = 0.6;
         x.beginPath();
-        if (m.kind === 'goal') { for (let i = 0; i < 10; i++) { const a = (i / 10) * Math.PI * 2 - Math.PI / 2, r = i % 2 ? 1.6 : 3.6; x.lineTo(mx + Math.cos(a) * r, mz + Math.sin(a) * r); } x.closePath(); }
+        if (m.kind === 'goal') { for (let i = 0; i < 10; i++) { const a = (i / 10) * Math.PI * 2 - Math.PI / 2 - camYaw, r = i % 2 ? 1.6 : 3.6; x.lineTo(mx + Math.cos(a) * r, mz + Math.sin(a) * r); } x.closePath(); }
         else x.arc(mx, mz, m.kind === 'npc' ? 1.8 : 2.2, 0, Math.PI * 2);
         x.fill(); x.stroke();
       }
     }
     x.restore();
-    // player arrow (always centre)
-    x.save(); x.translate(S / 2, S / 2); x.rotate(-yaw + Math.PI);
+    // camera view cone: the camera always looks "up" on this map
+    x.save(); x.translate(S / 2, S / 2);
+    x.fillStyle = 'rgba(255,255,255,0.14)'; x.beginPath(); x.moveTo(0, 0); x.arc(0, 0, 120, -Math.PI / 2 - 0.5, -Math.PI / 2 + 0.5); x.closePath(); x.fill();
+    x.restore();
+    // player arrow, rotated into the camera-aligned frame
+    x.save(); x.translate(S / 2, S / 2); x.rotate(Math.PI - yaw + camYaw);
     x.fillStyle = '#f07a50'; x.strokeStyle = '#fff'; x.lineWidth = 4;
     x.beginPath(); x.moveTo(0, -16); x.lineTo(12, 12); x.lineTo(0, 6); x.lineTo(-12, 12); x.closePath(); x.stroke(); x.fill();
     x.restore();
-    // camera view cone
-    x.save(); x.translate(S / 2, S / 2); x.rotate(-camYaw + Math.PI);
-    x.fillStyle = 'rgba(255,255,255,0.14)'; x.beginPath(); x.moveTo(0, 0); x.arc(0, 0, 120, -Math.PI / 2 - 0.5, -Math.PI / 2 + 0.5); x.closePath(); x.fill();
-    x.restore();
+    // north marker on the rim
+    if (!dungeon) {
+      const r = 128, nx = S / 2 + Math.sin(camYaw) * -r * -1, ny = S / 2 - Math.cos(camYaw) * r;
+      x.save(); x.fillStyle = '#c95a34'; x.beginPath(); x.arc(nx, ny, 17, 0, Math.PI * 2); x.fill();
+      x.fillStyle = '#fff'; x.font = 'bold 20px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('N', nx, ny + 1); x.restore();
+    }
   }
+
 }
