@@ -4,7 +4,7 @@ import { GLSL_NOISE, U } from '../render/Materials';
 
 /** Stylised toy-diorama water: depth-tinted from the terrain height map, shoreline foam bands,
  *  shallow caustics, animated normals, Fresnel sky reflection and sparkly sun glints (bloom-friendly). */
-export function buildWater(hf: Heightfield, sunDir: THREE.Vector3): THREE.Mesh {
+export function buildWater(hf: Heightfield, sunDir: THREE.Vector3, segments = 180): THREE.Mesh {
   const n = hf.n;
   const data = new Uint8Array(n * n * 4);
   for (let i = 0; i < n * n; i++) {
@@ -14,7 +14,7 @@ export function buildWater(hf: Heightfield, sunDir: THREE.Vector3): THREE.Mesh {
   const tex = new THREE.DataTexture(data, n, n, THREE.RGBAFormat);
   tex.magFilter = THREE.LinearFilter; tex.minFilter = THREE.LinearFilter; tex.needsUpdate = true;
 
-  const geo = new THREE.PlaneGeometry(900, 900, 180, 180);
+  const geo = new THREE.PlaneGeometry(900, 900, segments, segments);
   geo.rotateX(-Math.PI / 2);
   const mat = new THREE.ShaderMaterial({
     transparent: true, fog: true, depthWrite: false,

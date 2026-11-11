@@ -20,8 +20,10 @@ export function merge(list: THREE.BufferGeometry[]) {
 }
 
 /** Organic lump: subdivided icosphere displaced with 3D noise, smooth normals. */
+/** global detail cap: lowered while building far-LOD / low-quality meshes */
+export const GEO = { maxDetail: 3 };
 export function blob(r: number, seed: number, rough = 0.18, detail = 3, squash = 1): THREE.BufferGeometry {
-  let g: THREE.BufferGeometry = new THREE.IcosahedronGeometry(1, detail);
+  let g: THREE.BufferGeometry = new THREE.IcosahedronGeometry(1, Math.min(detail, GEO.maxDetail));
   g.deleteAttribute('normal'); g.deleteAttribute('uv');
   g = mergeVertices(g);
   const p = g.attributes.position;

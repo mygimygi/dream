@@ -86,7 +86,7 @@ export class Game {
   private respawnTimers: { type: EnemyType; x: number; z: number; t: number }[] = [];
   private guideMesh: THREE.Mesh;
   appearance: Appearance = { ...DEFAULT_APPEARANCE }; playerName = '미루'; private createYaw = 0;
-  private dayT = 0.32; private fsKeyHeld = false;
+  private dayT = 0.32; private mmTick = 0; private shadowTick = 0; private lastRender = 0; private resScale = 1; private slowT = 0; private fastT = 0; private fsKeyHeld = false;
 
   constructor(canvas: HTMLCanvasElement) {
     this.settings = Save.settings();
@@ -156,7 +156,7 @@ export class Game {
     Fullscreen.onChange(() => { this.ui.setFullscreenState(Fullscreen.active(), Fullscreen.supported()); setTimeout(onResize, 120); });
     this.ui.setFullscreenState(false, Fullscreen.supported());
     this.particles.setScale(innerHeight);
-    (window as any).__game = this;
+    (window as any).__game = this; (window as any).__THREE = THREE;
     this.toTitle();
     requestAnimationFrame(() => this.loop());
   }
@@ -780,6 +780,9 @@ export class Game {
   private loop() {
     requestAnimationFrame(() => this.loop());
     const now = performance.now();
+    // cap at ~60 fps: 90/120 Hz phones otherwise burn battery rendering frames nobody needs
+    if (now - this.lastRender < 15.5) return;
+    this.lastRender = now;
     let dt = Math.min(0.05, (now - this.lastFrame) / 1000);
     this.lastFrame = now;
     (window as any).__frames = ((window as any).__frames || 0) + 1;
@@ -795,6 +798,7 @@ export class Game {
     if (this.input.wasPressed('map') && this.mode === 'play') { if (this.ui.panelOpen === 'hub') this.ui.closePanel(); else if (!this.ui.dialogOpen) this.openMap(); }
 
     const paused = !!this.ui.panelOpen;
+    const tU = performance.now();
     if (this.mode === 'title') this.updateTitle(dt);
     else if (this.mode === 'create') this.updateCreate(dt);
     else if (!paused) this.updateGame(dt);
@@ -805,7 +809,28 @@ export class Game {
     U.uPlayer.value.copy(this.player.pos).y += 1.0;
     const sp = this.player.pos.clone().setY(this.player.pos.y + 0.8).project(this.cam);
     this.rs.setFocus(clamp(1 - (sp.y * 0.5 + 0.5), 0.3, 0.75));
+    const tR = performance.now();
+    const info = this.rs.renderer.info; info.autoReset = false; info.reset();
+    // low profile: refresh the shadow map at half rate (moving shadows still read smoothly)
+    const sm = this.rs.renderer.shadowMap;
+    if (this.qLevel === 'low') { sm.autoUpdate = false; if ((this.shadowTick = (this.shadowTick + 1) % 2) === 0) sm.needsUpdate = true; } else sm.autoUpdate = true;
     this.rs.render();
+    const tE = performance.now();
+    // lightweight perf probe (also feeds the adaptive resolution controller)
+    const P = ((window as any).__perf ??= { update: 0, render: 0, calls: 0, tris: 0, frame: 0 });
+    P.update = P.update * 0.9 + (tR - tU) * 0.1; P.render = P.render * 0.9 + (tE - tR) * 0.1; P.frame = P.frame * 0.9 + dt * 1000 * 0.1;
+    P.calls = info.render.calls; P.tris = info.render.triangles;
+    this.adaptResolution(dt);
+  }
+  /** Dynamic resolution: if frames stay slow, render fewer pixels; recover when there is headroom. */
+  private adaptResolution(dt: number) {
+    if (this.mode !== 'play' || this.settings.quality !== 'auto' || new URLSearchParams(location.search).has('q')) return;
+    const ms = dt * 1000;
+    if (ms > 24) { this.slowT += dt; this.fastT = 0; } else if (ms < 15) { this.fastT += dt; this.slowT = 0; } else { this.slowT = Math.max(0, this.slowT - dt); this.fastT = 0; }
+    let next = this.resScale;
+    if (this.slowT > 1.5 && this.resScale > 0.6) next = Math.max(0.6, this.resScale - 0.1);
+    if (this.fastT > 4 && this.resScale < 1) next = Math.min(1, this.resScale + 0.1);
+    if (next !== this.resScale) { this.resScale = next; this.slowT = this.fastT = 0; this.rs.setRenderScale(next); }
   }
   private perfCheck(dt: number) {
     if (this.mode !== 'play' || this.autoChecked || this.settings.quality !== 'auto') return;
@@ -930,6 +955,9 @@ export class Game {
     }
     // enemies
     for (const e of this.enemies) {
+      const far = !e.isBoss && !e.dead && Math.hypot(e.pos.x - P.pos.x, e.pos.z - P.pos.z) > 70;
+      e.m.root.visible = !far || e.dead;
+      if (far) continue;
       e.update(dt);
       if (!e.dead && this.mode === 'play' && e.touching(P.pos.clone().setY(P.pos.y + 0.6))) {
         const r = P.hurt(e.st.dmg, e.pos);
@@ -1009,7 +1037,7 @@ export class Game {
     }
 
     // NPCs
-    for (const n of this.npcs) n.update(dt, P.pos);
+    for (const n of this.npcs) if (Math.hypot(n.pos.x - P.pos.x, n.pos.z - P.pos.z) < 60) n.update(dt, P.pos);
     this.npcs.forEach((n, i) => { const m = this.qm.marker(n.id); const sp = this.markers[i] as any; if (sp.last !== m) { sp.last = m; sp.draw(m); } if (m) sp.position.y = 2.15 + Math.sin(this.time * 3) * 0.08; });
     const ab = this.arenaBoss;
     if (ab && !ab.dead && ab.state !== 'idle') { this.ui.boss(ab.hp / ab.maxHp, ({ guardian: '이끼숲 수호자', kingCrab: '대왕소라게', storm: '폭풍해파리' } as Record<string, string>)[ab.type] ?? ''); this.audio.setTheme('boss'); }
@@ -1044,7 +1072,7 @@ export class Game {
     ui.hearts(P.hp, P.maxHp); ui.shells(this.inv.count('shell'));
     this.updateRegion();
     this.updateGuide();
-    this.minimap.draw(P.pos.x, P.pos.z, P.yaw, this.rig.yaw, this.area === 'dungeon', this.dungeon.roomAt(P.pos.x, P.pos.z));
+    if ((this.mmTick = (this.mmTick + 1) % 4) === 0) this.minimap.draw(P.pos.x, P.pos.z, P.yaw, this.rig.yaw, this.area === 'dungeon', this.dungeon.roomAt(P.pos.x, P.pos.z));
     if (P.hp <= 2 && P.hp > 0 && Math.floor(this.time * 1.2) !== Math.floor((this.time - dtRaw) * 1.2)) this.audio.play('lowHp');
   }
   private collect(k: Pickup) {

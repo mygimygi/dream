@@ -5,8 +5,10 @@ export interface Inst { m: THREE.Matrix4; c?: THREE.Color; }
 export class ChunkedInstances {
   meshes: THREE.InstancedMesh[] = [];
   private centers: THREE.Vector3[] = [];
+  private lowMeshes: (THREE.InstancedMesh | null)[] = [];
+  lodDist = Infinity; private castFar: boolean;
   constructor(public geo: THREE.BufferGeometry, public mat: THREE.Material, items: Inst[], parent: THREE.Object3D,
-    opts: { chunk?: number; cast?: boolean; receive?: boolean; maxDist?: number } = {}) {
+    opts: { chunk?: number; cast?: boolean; receive?: boolean; maxDist?: number; lowGeo?: THREE.BufferGeometry; lodDist?: number; shadowDist?: number } = {}) {
     const chunk = opts.chunk ?? 32;
     const map = new Map<string, Inst[]>();
     const p = new THREE.Vector3();
@@ -27,17 +29,32 @@ export class ChunkedInstances {
       im.computeBoundingSphere();
       parent.add(im);
       this.meshes.push(im); this.centers.push(c);
+      // far-away twin with a simplified mesh sharing the same instance matrices
+      if (opts.lowGeo) {
+        const lo = new THREE.InstancedMesh(opts.lowGeo, mat, list.length);
+        lo.instanceMatrix = im.instanceMatrix; if (im.instanceColor) lo.instanceColor = im.instanceColor;
+        lo.castShadow = false; lo.receiveShadow = opts.receive ?? true; lo.boundingSphere = im.boundingSphere; lo.visible = false;
+        parent.add(lo); this.lowMeshes.push(lo);
+      } else this.lowMeshes.push(null);
     }
     this.maxDist = opts.maxDist ?? Infinity;
+    this.lodDist = opts.lodDist ?? Infinity;
+    this.shadowDist = opts.shadowDist ?? Infinity;
+    this.castFar = opts.cast ?? false;
   }
+  shadowDist: number;
   maxDist: number;
+  /** distance culling + hi/lo detail switch + shadow casting only near the player */
   updateLOD(focus: THREE.Vector3) {
-    if (this.maxDist === Infinity) return;
-    const md2 = this.maxDist * this.maxDist;
+    if (this.maxDist === Infinity && this.lodDist === Infinity && this.shadowDist === Infinity) return;
+    const md2 = this.maxDist * this.maxDist, ld2 = this.lodDist * this.lodDist, sd2 = this.shadowDist * this.shadowDist;
     for (let i = 0; i < this.meshes.length; i++) {
       const c = this.centers[i];
-      const dx = c.x - focus.x, dz = c.z - focus.z;
-      this.meshes[i].visible = dx * dx + dz * dz < md2;
+      const dx = c.x - focus.x, dz = c.z - focus.z, d2 = dx * dx + dz * dz;
+      const show = d2 < md2, near = d2 < ld2 || !this.lowMeshes[i];
+      this.meshes[i].visible = show && near;
+      if (this.lowMeshes[i]) this.lowMeshes[i]!.visible = show && !near;
+      this.meshes[i].castShadow = this.castFar && d2 < sd2;
     }
   }
 }

@@ -15,7 +15,7 @@ export function buildCliffDecor(hf: Heightfield, parent: THREE.Object3D, exclude
   const lipMat = toy({ vertexColors: true, roughness: 0.8 }, { rim: 0.2, rimColor: 0xf6ffd0, gloss: 0.08, wind: 0 });
   // unit stone: 1 x 1 x 1 rounded block with lighter top face
   const stoneGeos = [0, 1, 2].map((i) => {
-    const g = rbox(1, 1, 1, 0.22 + i * 0.04, 2);
+    const g = rbox(1, 1, 1, 0.22 + i * 0.04, low ? 1 : 2);
     const p = g.attributes.position;
     for (let k = 0; k < p.count; k++) { const x = p.getX(k), y = p.getY(k), z = p.getZ(k); const n = Math.sin(x * 7 + i) * Math.sin(z * 6 + y * 5) * 0.035; p.setXYZ(k, x * (1 + n), y, z * (1 + n)); }
     g.computeVertexNormals();
@@ -66,9 +66,9 @@ export function buildCliffDecor(hf: Heightfield, parent: THREE.Object3D, exclude
     pebbles.push({ m: mat4(x, hf.height(x, z) + 0.02, z, r() * 6, sc), c: tint() });
     if (pebbles.length > 2600) break;
   }
-  stones.forEach((list, i) => { if (list.length) out.push(new ChunkedInstances(stoneGeos[i], stoneMat, list, parent, { cast: !low, chunk: 32, maxDist: low ? 75 : 110 })); });
+  stones.forEach((list, i) => { if (list.length) out.push(new ChunkedInstances(stoneGeos[i], stoneMat, list, parent, { cast: !low, chunk: 32, maxDist: low ? 70 : 110, shadowDist: 45 })); });
   if (lips.length) out.push(new ChunkedInstances(lipGeo, lipMat, lips, parent, { cast: !low, chunk: 32, maxDist: low ? 75 : 110 }));
-  if (pebbles.length) out.push(new ChunkedInstances(pebbleGeo, stoneMat, pebbles, parent, { cast: false, chunk: 32, maxDist: 70 }));
+  if (pebbles.length) out.push(new ChunkedInstances(pebbleGeo, stoneMat, pebbles, parent, { cast: false, chunk: 32, maxDist: low ? 35 : 70 }));
   void merge;
   return out;
 }

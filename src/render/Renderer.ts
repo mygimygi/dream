@@ -89,11 +89,18 @@ export class RenderSystem {
     if (q.antialias === 'smaa') { this.smaa = new SMAAPass(w * q.pixelRatio, h * q.pixelRatio); composer.addPass(this.smaa); }
     else if (q.antialias === 'fxaa') { this.fxaa = new ShaderPass(FXAAShader); composer.addPass(this.fxaa); }
     this.composer = composer;
+    // low profile: draw straight to the screen (tone mapping still applied by the renderer)
+    this.direct = q.level === 'low';
+    this.renderer.toneMappingExposure = this.direct ? 1.05 : 0.98;
     this.resize();
   }
   resize() {
     const w = innerWidth, h = innerHeight;
-    this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
+    this.camera.aspect = w / h;
+    // portrait phones: widen the vertical FOV so the horizontal view does not collapse
+    const base = (this.camera.userData.baseFov ??= this.camera.fov);
+    this.camera.fov = w < h ? Math.min(44, base * (1 + (h / w - 1) * 0.55)) : base;
+    this.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h, false);
     this.composer.setSize(w, h);
     const pr = this.renderer.getPixelRatio();
@@ -103,6 +110,17 @@ export class RenderSystem {
     const portrait = h > w;
     for (const p of [this.tiltH, this.tiltV]) { p.uniforms.uBand.value = portrait ? 0.27 : 0.22; p.uniforms.uAmount.value = portrait ? 1.0 : 1.35; }
   }
+  private scale = 1;
+  /** multiply the profile pixel ratio (dynamic resolution) */
+  setRenderScale(k: number) {
+    this.scale = k;
+    const pr = this.q.pixelRatio * k;
+    this.renderer.setPixelRatio(pr); this.composer.setPixelRatio(pr); this.resize();
+  }
   setFocus(screenY: number) { const f = 1 - screenY; for (const p of [this.tiltH, this.tiltV]) p.uniforms.uFocus.value = f; }
-  render() { this.composer.render(); }
+  direct = false;
+  render() {
+    if (this.direct) this.renderer.render(this.scene, this.camera);
+    else this.composer.render();
+  }
 }

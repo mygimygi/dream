@@ -43,7 +43,9 @@ export function terrainColor(hf: Heightfield, x: number, z: number, h: number, n
   return out;
 }
 
-export function buildTerrain(hf: Heightfield): THREE.Mesh {
+/** Terrain is split into tiles so the camera only draws (and the sun only shadows) what is near;
+ *  `step` = 2 halves the resolution on low-end devices. */
+export function buildTerrain(hf: Heightfield, opts: { step?: number; tiles?: number; castShadow?: boolean } = {}): THREE.Group {
   const n = hf.n;
   const pos = new Float32Array(n * n * 3), nor = new Float32Array(n * n * 3), col = new Float32Array(n * n * 3), pathA = new Float32Array(n * n);
   const H = hf.heights;
@@ -67,19 +69,31 @@ export function buildTerrain(hf: Heightfield): THREE.Mesh {
     const ao = clamp(1 - Math.max(0, avg - h) * 0.22, 0.55, 1) * lerp(1, 1.06, clamp((h - avg) * 0.5));
     col[k * 3] = tmp.r * ao; col[k * 3 + 1] = tmp.g * ao; col[k * 3 + 2] = tmp.b * ao;
   }
-  const idx = new Uint32Array((n - 1) * (n - 1) * 6);
-  let t = 0;
-  for (let j = 0; j < n - 1; j++) for (let i = 0; i < n - 1; i++) {
-    const a = j * n + i, b = a + 1, c = a + n, d = c + 1;
-    idx[t++] = a; idx[t++] = c; idx[t++] = b; idx[t++] = b; idx[t++] = c; idx[t++] = d;
+  const step = opts.step ?? 1, TILES = opts.tiles ?? 8;
+  const attrs = {
+    position: new THREE.BufferAttribute(pos, 3), normal: new THREE.BufferAttribute(nor, 3),
+    color: new THREE.BufferAttribute(col, 3), aPath: new THREE.BufferAttribute(pathA, 1),
+  };
+  const per = Math.ceil((n - 1) / TILES / step) * step;
+  const tiles: THREE.BufferGeometry[] = [];
+  for (let tj = 0; tj < n - 1; tj += per) for (let ti = 0; ti < n - 1; ti += per) {
+    const list: number[] = [];
+    const i1 = Math.min(n - 1, ti + per), j1 = Math.min(n - 1, tj + per);
+    for (let j = tj; j < j1; j += step) for (let i = ti; i < i1; i += step) {
+      const ii = Math.min(n - 1, i + step), jj = Math.min(n - 1, j + step);
+      const a = j * n + i, b = j * n + ii, c = jj * n + i, d = jj * n + ii;
+      list.push(a, c, b, b, c, d);
+    }
+    const g = new THREE.BufferGeometry();
+    for (const [k, v] of Object.entries(attrs)) g.setAttribute(k, v);   // shared buffers: uploaded once
+    g.setIndex(list);
+    // bounds of just this tile
+    let minY = Infinity, maxY = -Infinity;
+    for (let j = tj; j <= j1; j += 2) for (let i = ti; i <= i1; i += 2) { const h = H[j * n + i]; if (h < minY) minY = h; if (h > maxY) maxY = h; }
+    g.boundingBox = new THREE.Box3(new THREE.Vector3(-WORLD_HALF + ti * CELL, minY, -WORLD_HALF + tj * CELL), new THREE.Vector3(-WORLD_HALF + i1 * CELL, maxY, -WORLD_HALF + j1 * CELL));
+    g.boundingSphere = g.boundingBox.getBoundingSphere(new THREE.Sphere());
+    tiles.push(g);
   }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
-  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  g.setAttribute('aPath', new THREE.BufferAttribute(pathA, 1));
-  g.setIndex(new THREE.BufferAttribute(idx, 1));
-  g.computeBoundingSphere(); g.computeBoundingBox();
 
   const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.93, metalness: 0, envMapIntensity: 0 });
   m.onBeforeCompile = (sh) => {
@@ -128,9 +142,14 @@ export function buildTerrain(hf: Heightfield): THREE.Mesh {
         diffuseColor.rgb = mix(g, r, steep);
       }`);
   };
-  const mesh = new THREE.Mesh(g, m);
+  const group = new THREE.Group();
+  for (const g of tiles) { const mesh = new THREE.Mesh(g, m); mesh.receiveShadow = true; mesh.castShadow = opts.castShadow ?? true; group.add(mesh); }
+  group.name = 'terrain';
+  (group as any).material = m;
+  return group;
+  const mesh = new THREE.Mesh(tiles[0], m);
   mesh.receiveShadow = true;
   mesh.castShadow = true;
   mesh.name = 'terrain';
-  return mesh;
+  return mesh as any;
 }

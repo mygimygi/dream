@@ -406,6 +406,7 @@ export function temple(): THREE.Group {
   gradient(dome, 0x5f8fc8, 0x9fd0f0, 6.4, 9.9);
   roof.add(mesh(dome, MAT.vcOcc));
   roof.add(mesh(colorize(at(sphere(0.45, 16, 12), 0, 10.2, 0), 0xf3d36a), MAT.metal));
+  roof.traverse((o) => (o.userData.keep = true)); // animated separately (lifts away when the hero is inside)
   g.add(roof);
   const ped = gradient(lathe([[0, 0], [0.9, 0], [0.7, 0.3], [0.5, 1.1], [0.75, 1.3], [0, 1.35]], 20), 0xa49a85, 0xe2d8c2, 0, 1.35);
   g.add(mesh(at(ped, 0, 1.2, 0), MAT.vcDetail));

@@ -4,9 +4,10 @@ import { Inventory } from '../inventory/Inventory';
 import { Line } from '../quest/Quest';
 import { Settings } from '../save/Save';
 
+let heartSeq = 0;
 const heartSVG = (fill: number) => {
-  // fill: 0, 0.5, 1
-  const id = 'h' + Math.random().toString(36).slice(2, 7);
+  // fill: 0, 0.5, 1 (stable ids so unchanged hearts never re-render)
+  const id = 'h' + (heartSeq++);
   return `<svg viewBox="0 0 32 30" aria-hidden="true"><defs><clipPath id="${id}"><rect x="0" y="0" width="${16 * fill * 2}" height="30"/></clipPath></defs>
   <path d="M16 28 C8 21 2 16 2 9.5 C2 5 5.5 2 9.5 2 C12.4 2 14.6 3.6 16 6 C17.4 3.6 19.6 2 22.5 2 C26.5 2 30 5 30 9.5 C30 16 24 21 16 28Z" fill="#fff7e8" stroke="#4a3424" stroke-width="2.5"/>
   <path clip-path="url(#${id})" d="M16 28 C8 21 2 16 2 9.5 C2 5 5.5 2 9.5 2 C12.4 2 14.6 3.6 16 6 C17.4 3.6 19.6 2 22.5 2 C26.5 2 30 5 30 9.5 C30 16 24 21 16 28Z" fill="#f0485a" stroke="#4a3424" stroke-width="2.5"/>
@@ -57,19 +58,23 @@ export class UI {
   setIcons(icons: Record<string, string>) { this.icons = icons; (this.el.shellIcon as HTMLImageElement).src = icons.shell; }
   minimapCanvas(c: HTMLCanvasElement) { this.el.mm.appendChild(c); }
   show(k: string, v: boolean) { this.el[k].hidden = !v; }
+  private heartKey = '';
   hearts(hp: number, max: number) {
+    const key = hp + '/' + max; if (key === this.heartKey) return; this.heartKey = key;
     let h = '';
     for (let i = 0; i < max / 2; i++) h += heartSVG(Math.max(0, Math.min(1, (hp - i * 2) / 2)));
     if (this.el.hearts.innerHTML !== h) this.el.hearts.innerHTML = h;
   }
-  shells(n: number) { this.el.shells.textContent = String(n); }
+  shells(n: number) { const t = String(n); if (this.el.shells.textContent !== t) this.el.shells.textContent = t; }
   quest(title: string, hint: string) { (this.el.quest.querySelector('b')!).textContent = title; (this.el.quest.querySelector('span')!).textContent = hint; }
-  areaName(n: string) { this.el.mmName.textContent = n; }
+  areaName(n: string) { if (this.el.mmName.textContent !== n) this.el.mmName.textContent = n; }
   equip(inv: Inventory, touch: boolean) {
     const s = (id: string, key: string, cnt?: number) => id ? `<div class="eslot"><img src="${this.icons[id]}" alt="${ITEMS[id].name}">${cnt !== undefined ? `<span class="cnt">${cnt}</span>` : ''}${touch ? '' : `<kbd>${key}</kbd>`}</div>` : '';
     this.el.equip.innerHTML = s(inv.equipped.tool, 'Q') + s(inv.equipped.shield, 'L') + s(inv.equipped.weapon, 'J') + (inv.has('smallKey') ? s('smallKey', '', inv.count('smallKey')) : '');
   }
+  private promptKey = '';
   prompt(text: string | null, touch: boolean) {
+    const key = (text ?? '') + touch; if (key === this.promptKey) return; this.promptKey = key;
     if (!text) { this.el.prompt.hidden = true; return; }
     this.el.prompt.hidden = false;
     this.el.prompt.innerHTML = touch ? `<kbd>조사</kbd>${text}` : `<kbd>E</kbd>${text}`;
@@ -90,7 +95,8 @@ export class UI {
     this.el.itemget.hidden = false;
   }
   hideItemGet() { this.el.itemget.hidden = true; }
-  boss(frac: number | null, name = '가시고둥왕') { this.el.boss.hidden = frac === null; if (frac !== null) (this.el.boss.querySelector('b') as HTMLElement).textContent = name; if (frac !== null) (this.el.bossFill as HTMLElement).style.width = `${Math.max(0, frac) * 100}%`; }
+  private bossKey = '';
+  boss(frac: number | null, name = '가시고둥왕') { const key = frac === null ? '' : name + Math.round(frac * 200); if (key === this.bossKey) return; this.bossKey = key; this.el.boss.hidden = frac === null; if (frac !== null) (this.el.boss.querySelector('b') as HTMLElement).textContent = name; if (frac !== null) (this.el.bossFill as HTMLElement).style.width = `${Math.max(0, frac) * 100}%`; }
   guide(g: { x: number; y: number; angle: number; onScreen: boolean; label: string; dist: number } | null) {
     const el = this.el.guide;
     if (!g) { el.hidden = true; return; }

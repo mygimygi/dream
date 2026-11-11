@@ -149,16 +149,16 @@ export function bushModel(seed: number, palette: [number, number] = [0x2f7a2e, 0
   return merge(bs);
 }
 
-export function grassTuft(seed: number): THREE.BufferGeometry {
+export function grassTuft(seed: number, lite = false): THREE.BufferGeometry {
   const r = mulberry32(seed);
   const pos: number[] = [], col: number[] = [];
   const base = new THREE.Color(0x4f9a33), tip = new THREE.Color(0x8cc650), c = new THREE.Color();
-  const blades = 11;
+  const blades = lite ? 7 : 11;
   for (let b = 0; b < blades; b++) {
     const a = r() * Math.PI * 2, lean = 0.3 + r() * 0.35, h = 0.11 + r() * 0.11, w = 0.06 + r() * 0.03;
     const ox = (r() - 0.5) * 0.4, oz = (r() - 0.5) * 0.4;
     const dx = Math.cos(a), dz = Math.sin(a), px = -dz, pz = dx;
-    const seg = 4;
+    const seg = lite ? 2 : 4;
     const pts: number[][] = [];
     for (let s = 0; s <= seg; s++) {
       const t = s / seg, ww = w * Math.sin(Math.PI * (0.18 + t * 0.8)) * (t === 1 ? 0.25 : 1);
@@ -183,13 +183,17 @@ export function grassTuft(seed: number): THREE.BufferGeometry {
 
 /** Clover / low leafy ground cover: overlapping rounded leaves, reads as soft volume instead of blades. */
 export function cloverClump(seed: number): THREE.BufferGeometry {
+  // leaves are flat rounded discs (6 triangles each) instead of spheres: ~160 triangles per clump
   const r = mulberry32(seed);
   const parts: THREE.BufferGeometry[] = [];
   for (let i = 0; i < 9; i++) {
     const a = r() * Math.PI * 2, d = r() * 0.22, y = 0.05 + r() * 0.06;
     for (let k = 0; k < 3; k++) {
       const b = a + (k / 3) * Math.PI * 2;
-      parts.push(at(sphere(0.055, 8, 6), Math.cos(a) * d + Math.cos(b) * 0.05, y, Math.sin(a) * d + Math.sin(b) * 0.05, 0, -b, 0, [1.2, 0.35, 0.9]));
+      const leaf = new THREE.CircleGeometry(0.06, 6);
+      leaf.deleteAttribute('uv');
+      at(leaf, Math.cos(a) * d + Math.cos(b) * 0.05, y, Math.sin(a) * d + Math.sin(b) * 0.05, -Math.PI / 2 + 0.25, 0, -b, [1.25, 0.9, 1]);
+      parts.push(leaf);
     }
   }
   const g = merge(parts);

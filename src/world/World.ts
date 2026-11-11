@@ -13,6 +13,7 @@ import { at, blob, gradient, merge } from './Geo';
 import { toy } from '../render/Materials';
 import { mulberry32 } from '../core/math';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { bakeStatic } from '../render/Bake';
 
 export interface Interactable { id: string; pos: THREE.Vector3; radius: number; prompt: () => string | null; act: () => void; }
 export interface ChestEnt { def: L.ChestDef; obj: THREE.Group & { lid: THREE.Object3D }; opened: boolean; openT: number; collider: any; visible: boolean; }
@@ -37,7 +38,7 @@ export class World {
   templeRoof!: THREE.Object3D; private roofK = 1;
 
   chimneys: THREE.Vector3[] = [];
-  envTex: THREE.Texture | null = null; cliffs: ChunkedInstances[] = [];
+  envTex: THREE.Texture | null = null; private propTick = 0; propViewDist = 150; cliffs: ChunkedInstances[] = [];
   constructor(scene: THREE.Scene, q: QualityProfile, renderer?: THREE.WebGLRenderer) {
     this.scene = scene;
     this.hf = new Heightfield();
@@ -60,14 +61,17 @@ export class World {
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(q.shadowSize, q.shadowSize);
     const sc = this.sun.shadow.camera;
-    sc.left = -34; sc.right = 34; sc.top = 34; sc.bottom = -34; sc.near = 1; sc.far = 160;
+    const sr = q.level === 'low' ? 22 : 34; // smaller shadow box on low = fewer casters per shadow pass
+    sc.left = -sr; sc.right = sr; sc.top = sr; sc.bottom = -sr; sc.near = 1; sc.far = 160;
     this.sun.shadow.bias = -0.0006; this.sun.shadow.normalBias = 0.035; this.sun.shadow.radius = 4; this.sun.shadow.intensity = 0.82; // softer, never pitch-black shadows
     scene.add(this.sun); scene.add(this.sun.target);
     const fill = new THREE.DirectionalLight(0xbfd8ff, 0.45); fill.position.set(40, 30, -60); scene.add(fill);
 
-    const terrain = buildTerrain(this.hf);
+    const low = q.level === 'low';
+    this.propViewDist = low ? 95 : 160;
+    const terrain = buildTerrain(this.hf, { step: low ? 2 : 1, tiles: 8, castShadow: !low });
     scene.add(terrain);
-    this.water = buildWater(this.hf, this.sunDir);
+    this.water = buildWater(this.hf, this.sunDir, low ? 70 : 180);
     scene.add(this.water);
 
     const props = new THREE.Group(); props.name = 'props'; scene.add(props);
@@ -197,6 +201,9 @@ export class World {
     ex(L.START.x, L.START.z, 2);
     ex(VILLAGE.x, VILLAGE.z, 7);
 
+    // merge static prop groups (houses, fences, wells, pillars...) to cut draw calls; pots stay separate (breakable)
+    const potSet = new Set(this.pots.map((p) => p.obj));
+    for (const o of props.children) if (!potSet.has(o as THREE.Group) && (o as any).isGroup) bakeStatic(o);
     this.veg = new Vegetation(this.hf, this.col, props, q, exclude);
     this.cliffs = buildCliffDecor(this.hf, props, exclude, q.level === 'low');
 
@@ -262,6 +269,11 @@ export class World {
     this.sun.position.set(fx + d.x * 70, focus.y + d.y * 70, fz + d.z * 70);
     this.sun.target.position.set(fx, focus.y, fz);
     this.veg.updateLOD(focus);
+    // static props: cast shadows only near the player (the sun's shadow box is ~34 units wide anyway)
+    if ((this.propTick = (this.propTick + 1) % 20) === 0) {
+      const props = this.scene.getObjectByName('props');
+      props?.children.forEach((o) => { if ((o as any).isInstancedMesh) return; const far = Math.abs(o.position.x - focus.x) > 40 || Math.abs(o.position.z - focus.z) > 40; if (o.userData.far !== far) { o.userData.far = far; o.visible = !(far && Math.hypot(o.position.x - focus.x, o.position.z - focus.z) > this.propViewDist); o.traverse((m: any) => { if (m.isMesh) m.castShadow = !far; }); } else if (far) o.visible = Math.hypot(o.position.x - focus.x, o.position.z - focus.z) <= this.propViewDist; });
+    }
     for (const c of this.cliffs) c.updateLOD(focus);
     // lift the temple roof away while the hero stands inside the colonnade
     const inside = Math.hypot(focus.x - L.TEMPLE_POS.x, focus.z - L.TEMPLE_POS.z) < 7;

@@ -42,11 +42,12 @@ export default { async exp({ page, G, frames, shot }) {
   await shot('e_cook');
   check('T5 요리 → 음식 인벤토리 추가', (await inv('soup')) === 1, potLbl);
   await page.click('[data-m=close]').catch(() => {}); await frames(2);
-  const hp0 = await G(() => window.__game.player.hp); await G(() => window.__game['useItem']('soup')); const hp1 = await G(() => window.__game.player.hp);
+  await G(() => { window.__game.player.hp = 2; }); const hp0 = await G(() => window.__game.player.hp); await G(() => window.__game['useItem']('soup')); const hp1 = await G(() => window.__game.player.hp);
   check('T5 먹으면 체력 회복', hp1 > hp0, `${hp0}→${hp1}`);
   check('T5 도감(요리)·레시피 기록', await G(() => window.__game.codex.has('dishes', 'soup') && window.__game.cooking.known.has('r_soup')));
   // ---- T4 fishing ----
-  await tp(1.5, 74.5, Math.PI); await frames(3); await page.keyboard.press('KeyE'); await frames(4); await close();
+  { const f = await G(() => { const n = window.__game.npcs.find((x) => x.id === 'fisher'); return [n.pos.x, n.pos.z]; }); await tp(f[0], f[1] + 1.6, Math.PI); }
+  await frames(3); await page.keyboard.press('KeyE'); await frames(4); await close();
   check('T4 낚싯대 받기', (await inv('rod')) === 1);
   // stand at the shore facing the sea
   const spot = await G(() => { const g = window.__game, hf = g.world.hf; for (let z = 70; z < 110; z += 0.5) { if (hf.height(2, z) < 0.15) return z - 3; } return 90; });

@@ -5,6 +5,7 @@ import { ChunkedInstances, Inst, RemovableInstances, mat4 } from './Instancing';
 import { bellFlower, bushModel, cloverClump, daisyCluster, flowerModel, grassTuft, mushroomModel, palmTree, pineTree, rockModel, roundTree, TreeModel } from './PlantModels';
 import { toy } from '../render/Materials';
 import { fbm, mulberry32, noise2 } from '../core/math';
+import { GEO } from './Geo';
 import { QualityProfile } from '../core/Quality';
 
 export interface Zone { x: number; z: number; r: number; }
@@ -37,6 +38,11 @@ export class Vegetation {
 
   constructor(public hf: Heightfield, public col: CollisionWorld, public parent: THREE.Object3D, public q: QualityProfile, public exclude: Zone[]) {
     const sp = new Spacing();
+    const low = q.level === 'low';
+    const lowOf = <T,>(build: () => T): T => { const keep = GEO.maxDetail; GEO.maxDetail = 1; try { return build(); } finally { GEO.maxDetail = keep; } };
+    // on low-end devices even the near meshes use a medium detail
+    if (low) GEO.maxDetail = 2;
+    const DIST = { tree: low ? 95 : 150, lod: low ? 34 : 55, shadow: low ? 20 : 60, chunk: low ? 24 : 40 };
     for (const z of exclude) sp.add(z.x, z.z, z.r);
     const rnd = mulberry32(2024);
     const excluded = (x: number, z: number, pad = 0) => exclude.some((e) => Math.hypot(e.x - x, e.z - z) < e.r + pad);
@@ -46,12 +52,15 @@ export class Vegetation {
     };
 
     // ---------- trees ----------
-    const roundVariants: TreeModel[] = [roundTree(11), roundTree(28), roundTree(45, [0x2f6b2b, 0x5aa83a, 0x8fd04c], 0xe8483a), roundTree(62, [0x8a4a6a, 0xe890b0, 0xffd6e4])];
+    const roundSpecs: [number, [number, number, number]?, number?][] = [[11], [28], [45, [0x2f6b2b, 0x5aa83a, 0x8fd04c], 0xe8483a], [62, [0x8a4a6a, 0xe890b0, 0xffd6e4]]];
+    const roundVariants: TreeModel[] = roundSpecs.map(([sd, pal, fr]) => roundTree(sd, pal, fr));
+    const roundLow = lowOf(() => roundSpecs.map(([sd, pal, fr]) => roundTree(sd, pal, fr)));
     const forestVariants: TreeModel[] = [0, 1, 2].map((i) => roundTree(101 + i * 13, [0x1f5a2a, 0x3f8f34, 0x6cb540]));
+    const forestLow = lowOf(() => [0, 1, 2].map((i) => roundTree(101 + i * 13, [0x1f5a2a, 0x3f8f34, 0x6cb540])));
     const pineVariants = [0, 1, 2].map((i) => pineTree(51 + i * 7));
     const palmVariants = [0, 1].map((i) => palmTree(71 + i * 5));
     const tInst: Inst[][] = [[], [], [], [], [], [], [], [], [], [], [], []];
-    const plan: { set: TreeModel[]; base: number }[] = [{ set: roundVariants, base: 0 }, { set: forestVariants, base: 4 }, { set: pineVariants, base: 7 }, { set: palmVariants, base: 10 }];
+    const plan: { set: TreeModel[]; base: number; low?: TreeModel[] }[] = [{ set: roundVariants, base: 0, low: roundLow }, { set: forestVariants, base: 4, low: forestLow }, { set: pineVariants, base: 7 }, { set: palmVariants, base: 10 }];
     const tryTree = (x: number, z: number, kind: number, spacing: number, sMin: number, sMax: number) => {
       if (excluded(x, z, 2) || !sp.ok(x, z, spacing)) return false;
       const set = plan[kind];
@@ -84,8 +93,8 @@ export class Vegetation {
     plan.forEach((p) => p.set.forEach((tm, v) => {
       const items = tInst[p.base + v]; if (!items.length) return;
       const lm = p.base === 10 ? this.palmLeafMat : this.leafMat;
-      this.lod.push(new ChunkedInstances(tm.trunk, this.trunkMat, items, parent, { cast: true, chunk: 40 }));
-      this.lod.push(new ChunkedInstances(tm.leaves, lm, items, parent, { cast: true, chunk: 40 }));
+      this.lod.push(new ChunkedInstances(tm.trunk, this.trunkMat, items, parent, { cast: true, chunk: DIST.chunk, maxDist: DIST.tree, shadowDist: DIST.shadow }));
+      this.lod.push(new ChunkedInstances(tm.leaves, lm, items, parent, { cast: true, chunk: DIST.chunk, maxDist: DIST.tree, lowGeo: p.low?.[v].leaves, lodDist: DIST.lod, shadowDist: DIST.shadow }));
     }));
 
     // ---------- rocks ----------
@@ -110,7 +119,8 @@ export class Vegetation {
       rInst[v].push({ m: mat4(x, y, z, rnd() * 6.28, s, s * (0.7 + rnd() * 0.5)), c: new THREE.Color(1, 1, 1).multiplyScalar(0.9 + rnd() * 0.15) });
       if (s > 0.5) col.circle(x, z, s * 0.95, y - 1, y + s * 0.85, 'rock');
     }
-    [...rockGeos, ...mossGeos].forEach((g, v) => { if (rInst[v].length) this.lod.push(new ChunkedInstances(g, this.rockMat, rInst[v], parent, { cast: true, chunk: 40 })); });
+    const rockLow = lowOf(() => [rockModel(5, false, 'round'), rockModel(14, false, 'flat'), rockModel(23, false, 'angular'), rockModel(32, false, 'stack'), rockModel(80, true, 'round'), rockModel(89, true, 'boulder')]);
+    [...rockGeos, ...mossGeos].forEach((g, v) => { if (rInst[v].length) this.lod.push(new ChunkedInstances(g, this.rockMat, rInst[v], parent, { cast: !low, chunk: 40, maxDist: DIST.tree, lowGeo: rockLow[v], lodDist: DIST.lod, shadowDist: DIST.shadow })); });
 
     // ---------- bushes (decor + cuttable) ----------
     const bushGeos = [bushModel(3), bushModel(9, [0x2a6f2a, 0x6db83c], 0xe0405a), bushModel(15, [0x2f7a3a, 0x8fd04c], 0xffffff)];
@@ -126,7 +136,8 @@ export class Vegetation {
       const v = Math.floor(rnd() * 3), s = 0.7 + rnd() * 0.7;
       bInst[v].push({ m: mat4(x, hf.height(x, z) - 0.1, z, rnd() * 6.28, s), c: new THREE.Color(1, 1, 1).multiplyScalar(0.9 + rnd() * 0.2) });
     }
-    bushGeos.forEach((g, v) => { if (bInst[v].length) this.lod.push(new ChunkedInstances(g, this.bushMat, bInst[v], parent, { cast: true, chunk: 40 })); });
+    const bushLow = lowOf(() => [bushModel(3), bushModel(9, [0x2a6f2a, 0x6db83c], 0xe0405a), bushModel(15, [0x2f7a3a, 0x8fd04c], 0xffffff)]);
+    bushGeos.forEach((g, v) => { if (bInst[v].length) this.lod.push(new ChunkedInstances(g, this.bushMat, bInst[v], parent, { cast: !low, chunk: 40, maxDist: low ? 70 : 120, lowGeo: bushLow[v], lodDist: DIST.lod, shadowDist: DIST.shadow })); });
 
     // cuttable bushes: light leafy balls along paths and walls of hidden routes
     const cutPts: [number, number][] = [];
@@ -156,7 +167,7 @@ export class Vegetation {
     });
 
     // ---------- grass ----------
-    const tufts = [grassTuft(1), grassTuft(2), cloverClump(3)];
+    const tufts = [grassTuft(1, low), grassTuft(2, low), cloverClump(3)];
     const gInst: Inst[][] = [[], [], []];
     let placed = 0;
     for (let i = 0; i < q.grassCount * 6 && placed < q.grassCount; i++) {
@@ -188,7 +199,7 @@ export class Vegetation {
       fInst[v].push({ m: mat4(x, hf.height(x, z) - 0.02, z, rnd() * 6.28, 0.9 + rnd() * 0.6) });
       placed++;
     }
-    flowerGeos.forEach((g, v) => this.lod.push(new ChunkedInstances(g, this.plantMat, fInst[v], parent, { cast: false, chunk: 24, maxDist: 70 })));
+    flowerGeos.forEach((g, v) => this.lod.push(new ChunkedInstances(g, this.plantMat, fInst[v], parent, { cast: false, chunk: 24, maxDist: low ? 40 : 70 })));
 
     // ---------- mushrooms (forest) ----------
     const mush = [mushroomModel(0xd8452f), mushroomModel(0xe0a040)];
@@ -202,7 +213,8 @@ export class Vegetation {
         mInst[v].push({ m: mat4(xx, hf.height(xx, zz) - 0.03, zz, rnd() * 6, 0.6 + rnd() * 0.9) });
       }
     }
-    mush.forEach((g, v) => this.lod.push(new ChunkedInstances(g, this.plantMat, mInst[v], parent, { cast: true, chunk: 32, maxDist: 80 })));
+    mush.forEach((g, v) => this.lod.push(new ChunkedInstances(g, this.plantMat, mInst[v], parent, { cast: !low, chunk: 32, maxDist: low ? 45 : 80 })));
+    GEO.maxDetail = 3;
   }
   updateLOD(focus: THREE.Vector3) { for (const l of this.lod) l.updateLOD(focus); }
   cutBushAt(x: number, z: number, r: number): CuttableBush[] {
