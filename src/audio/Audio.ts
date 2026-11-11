@@ -16,6 +16,7 @@ const THEMES: Record<Exclude<Theme, 'none'>, ThemeDef> = {
   dungeon:  { bpm: 80, root: 55, scale: MIN, prog: [[0, 2, 4], [5, 0, 2], [3, 5, 0], [4, 6, 1]], lead: 'triangle', pad: 'sawtooth', seed: 83, swing: 0, drums: 0.4, leadOct: 1, bright: 0.25 },
   boss:     { bpm: 148, root: 52, scale: MIN, prog: [[0, 2, 4], [5, 0, 2], [6, 1, 3], [4, 6, 1]], lead: 'sawtooth', pad: 'square', seed: 97, swing: 0, drums: 1.2, leadOct: 1, bright: 0.35 },
 };
+const SFX_BOOST = 2.0;
 const mtof = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
 
 class Track {
@@ -105,14 +106,14 @@ export class AudioSystem {
     try { this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)(); } catch { return; }
     const c = this.ctx;
     this.master = c.createGain(); this.master.gain.value = 0.9;
-    const comp = c.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 3;
+    const comp = c.createDynamicsCompressor(); comp.threshold.value = -8; comp.ratio.value = 2.5; comp.attack.value = 0.003; comp.release.value = 0.15;
     this.master.connect(comp).connect(c.destination);
     // a short synthetic room reverb for the music
     const rev = c.createConvolver(); const len = c.sampleRate * 1.8; const ir = c.createBuffer(2, len, c.sampleRate);
     for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3); }
     rev.buffer = ir; const rg = c.createGain(); rg.gain.value = 0.25;
     this.music = c.createGain(); this.music.gain.value = this.musicVol; this.music.connect(this.master); this.music.connect(rev); rev.connect(rg).connect(this.master);
-    this.sfxBus = c.createGain(); this.sfxBus.gain.value = this.sfxVol; this.sfxBus.connect(this.master);
+    this.sfxBus = c.createGain(); this.sfxBus.gain.value = this.sfxVol * SFX_BOOST; this.sfxBus.connect(this.master);
     this.ambBus = c.createGain(); this.ambBus.gain.value = 0.5 * this.sfxVol; this.ambBus.connect(this.master);
     this.noise = c.createBuffer(1, c.sampleRate * 2, c.sampleRate);
     const nd = this.noise.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
@@ -129,7 +130,7 @@ export class AudioSystem {
   }
   setVolumes(music: number, sfx: number) {
     this.musicVol = music; this.sfxVol = sfx;
-    if (this.ctx) { this.music.gain.value = music; this.sfxBus.gain.value = sfx; this.ambBus.gain.value = 0.5 * sfx; }
+    if (this.ctx) { this.music.gain.value = music; this.sfxBus.gain.value = sfx * SFX_BOOST; this.ambBus.gain.value = 0.5 * sfx; }
   }
   setTheme(t: Theme) {
     if (t === this.cur) return;
@@ -164,31 +165,39 @@ export class AudioSystem {
     f.frequency.setValueAtTime(f0, t); f.frequency.exponentialRampToValueAtTime(f1, t + dur);
     this.env(g, t, 0.005, dur, vol); s.connect(f).connect(g).connect(this.sfxBus); s.start(t, Math.random()); s.stop(t + dur + 0.05);
   }
+  /** briefly lower the music so impact sounds cut through */
+  private duck(amount = 0.45, time = 0.35) {
+    const c = this.ctx!, g = this.music.gain, t = c.currentTime;
+    g.cancelScheduledValues(t); g.setValueAtTime(g.value, t);
+    g.linearRampToValueAtTime(this.musicVol * amount, t + 0.02);
+    g.linearRampToValueAtTime(this.musicVol, t + time);
+  }
+  private sweep(f0: number, f1: number, dur: number, type: OscillatorType, vol: number, delay = 0) { this.tone(f0, f1, dur, type, vol, delay); }
   play(name: string, opt?: any) {
     if (!this.ctx) return;
     const rnd = 0.9 + Math.random() * 0.2;
     switch (name) {
-      case 'swing': this.hiss(0.16, 900 * rnd, 3200, 0.35, 'bandpass', 1.4); break;
-      case 'swing2': case 'spin': this.hiss(0.32, 600, 4000, 0.4, 'bandpass', 1.2); this.hiss(0.2, 1500, 600, 0.2, 'bandpass', 2, 0.12); break;
-      case 'hit': this.tone(220 * rnd, 60, 0.12, 'square', 0.18); this.hiss(0.08, 3000, 800, 0.35, 'bandpass', 0.8); break;
-      case 'hurt': this.tone(520, 180, 0.25, 'sawtooth', 0.12); this.tone(390, 120, 0.25, 'square', 0.08, 0.04); break;
-      case 'block': this.tone(1400, 1300, 0.25, 'triangle', 0.18); this.tone(2100, 2000, 0.18, 'sine', 0.1); this.hiss(0.05, 5000, 3000, 0.2, 'highpass'); break;
+      case 'swing': this.hiss(0.2, 700 * rnd, 4200, 0.9, 'bandpass', 2.2); this.sweep(520 * rnd, 180, 0.16, 'sine', 0.22); break;
+      case 'swing2': case 'spin': this.hiss(0.36, 500, 5000, 0.95, 'bandpass', 2); this.hiss(0.24, 2200, 700, 0.5, 'bandpass', 2.5, 0.14); this.sweep(300, 900, 0.3, 'sine', 0.2); break;
+      case 'hit': this.duck(0.4, 0.3); this.sweep(190 * rnd, 45, 0.18, 'sine', 0.75); this.tone(260 * rnd, 70, 0.1, 'square', 0.28); this.hiss(0.07, 5000, 1500, 0.8, 'highpass', 0.7); this.tone(1250 * rnd, 1150, 0.12, 'triangle', 0.18, 0.01); break;
+      case 'hurt': this.duck(0.35, 0.5); this.tone(620, 200, 0.28, 'sawtooth', 0.28); this.tone(470, 140, 0.28, 'square', 0.2, 0.05); this.sweep(150, 50, 0.2, 'sine', 0.5); break;
+      case 'block': this.tone(1400, 1300, 0.3, 'triangle', 0.4); this.tone(2100, 2000, 0.22, 'sine', 0.22); this.hiss(0.05, 5000, 3000, 0.2, 'highpass'); break;
       case 'clank': this.tone(900, 850, 0.18, 'square', 0.12); this.tone(1350, 1300, 0.15, 'triangle', 0.1); break;
       case 'jump': this.tone(300, 600, 0.12, 'triangle', 0.12); this.hiss(0.1, 1200, 2400, 0.08); break;
       case 'land': this.hiss(0.08, 700, 300, 0.15, 'lowpass'); break;
       case 'step': opt?.water ? this.hiss(0.12, 1800, 700, 0.12, 'bandpass', 1) : this.hiss(0.05, 1400 * rnd, 500, opt?.soft ? 0.05 : 0.08, 'bandpass', 1.5); break;
       case 'roll': this.hiss(0.3, 400, 1200, 0.2, 'bandpass', 0.8); break;
-      case 'cut': this.hiss(0.18, 2500, 900, 0.3, 'bandpass', 0.7); this.hiss(0.25, 900, 400, 0.15, 'lowpass', 1, 0.05); break;
-      case 'pot': this.tone(700, 300, 0.1, 'triangle', 0.15); this.hiss(0.2, 3000, 1500, 0.3, 'highpass'); break;
-      case 'alert': this.tone(880, 1320, 0.09, 'square', 0.06); this.tone(1320, 1760, 0.09, 'square', 0.06, 0.08); break;
-      case 'creature': this.tone(600 * rnd, 350, 0.12, 'triangle', 0.1); break;
-      case 'enemyDie': this.tone(500, 1500, 0.15, 'triangle', 0.12); this.hiss(0.3, 800, 200, 0.2, 'lowpass'); break;
-      case 'bossDie': for (let i = 0; i < 6; i++) { this.tone(200 - i * 20, 50, 0.4, 'sawtooth', 0.12, i * 0.18); this.hiss(0.5, 1200, 100, 0.3, 'lowpass', 1, i * 0.18); } break;
+      case 'cut': this.hiss(0.16, 3500, 1200, 0.75, 'bandpass', 1.2); this.hiss(0.3, 1200, 400, 0.45, 'lowpass', 1, 0.04); break;
+      case 'pot': this.tone(900, 350, 0.12, 'triangle', 0.35); this.hiss(0.28, 4500, 1800, 0.8, 'highpass'); this.tone(1400, 1300, 0.08, 'square', 0.1, 0.05); break;
+      case 'alert': this.tone(880, 1320, 0.09, 'square', 0.12); this.tone(1320, 1760, 0.1, 'square', 0.12, 0.08); break;
+      case 'creature': this.tone(700 * rnd, 380, 0.14, 'triangle', 0.25); break;
+      case 'enemyDie': this.duck(0.35, 0.6); this.sweep(700, 1800, 0.12, 'square', 0.18); this.hiss(0.35, 1500, 200, 0.75, 'lowpass', 1, 0.06); this.sweep(220, 55, 0.3, 'sine', 0.6, 0.06); [0, 7, 12].forEach((k, i) => this.tone(mtof(84 + k), mtof(84 + k), 0.1, 'triangle', 0.14, 0.2 + i * 0.06)); break;
+      case 'bossDie': this.duck(0.2, 2.5); for (let i = 0; i < 6; i++) { this.tone(200 - i * 20, 50, 0.4, 'sawtooth', 0.12, i * 0.18); this.hiss(0.5, 1200, 100, 0.3, 'lowpass', 1, i * 0.18); } break;
       case 'puff': this.hiss(0.25, 600, 1800, 0.18, 'bandpass', 1); break;
       case 'spike': this.tone(1200, 700, 0.08, 'square', 0.05); break;
       case 'snap': this.tone(1600, 900, 0.05, 'square', 0.12); this.tone(1200, 600, 0.05, 'square', 0.1, 0.06); break;
       case 'charge': this.tone(200, 380, 0.3, 'sawtooth', 0.08); break;
-      case 'thud': this.tone(110, 40, 0.4, 'sine', 0.4); this.hiss(0.3, 600, 100, 0.3, 'lowpass'); break;
+      case 'thud': this.duck(0.4, 0.5); this.tone(110, 40, 0.45, 'sine', 0.8); this.hiss(0.3, 600, 100, 0.3, 'lowpass'); break;
       case 'chest': { const n = [0, 4, 7, 12]; n.forEach((k, i) => this.tone(mtof(67 + k), mtof(67 + k), 0.22, 'triangle', 0.12, i * 0.08)); break; }
       case 'itemGet': { const n = [0, 4, 7, 11, 12, 16]; n.forEach((k, i) => this.tone(mtof(72 + k), mtof(72 + k), i === 5 ? 0.8 : 0.18, i === 5 ? 'triangle' : 'square', i === 5 ? 0.14 : 0.06, i * 0.1)); break; }
       case 'smallGet': this.tone(1320, 1320, 0.07, 'square', 0.05); this.tone(1760, 1760, 0.12, 'square', 0.05, 0.06); break;

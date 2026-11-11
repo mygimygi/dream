@@ -35,7 +35,7 @@ export class UI {
         <div class="bossbar" data-k="boss" hidden><b>가시고둥왕</b><div class="bar"><i data-k="bossFill"></i></div></div>
       </div>
       <div class="prompt" data-k="prompt" hidden></div>
-      <div class="guide" data-k="guide" hidden><div class="g-arrow" data-k="gArrow"></div><div class="g-label" data-k="gLabel"></div></div>
+      <div class="guide" data-k="guide" hidden><div class="g-arrow" data-k="gArrow"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M6 17 H22 V9 L36 20 L22 31 V23 H6 Z" fill="#fff" stroke="#c95a34" stroke-width="2" stroke-linejoin="round"/></svg></div><div class="g-label" data-k="gLabel"></div></div>
       <div class="toast-region" data-k="region"></div>
       <div class="toast" data-k="toast"></div>
       <div class="itemget" data-k="itemget" hidden><img alt="" data-k="igImg"><div><h3 data-k="igName"></h3><p data-k="igDesc"></p></div></div>
@@ -97,7 +97,7 @@ export class UI {
     el.hidden = false;
     el.style.transform = `translate(${g.x}px, ${g.y}px)`;
     el.classList.toggle('on', g.onScreen);
-    (this.el.gArrow as HTMLElement).style.transform = g.onScreen ? '' : `rotate(${g.angle}rad)`;
+    (this.el.gArrow.firstElementChild as SVGElement).style.transform = `rotate(${g.onScreen ? Math.PI / 2 : g.angle}rad)`;
     const t = `${g.label} · ${g.dist}m`;
     if (this.el.gLabel.textContent !== t) this.el.gLabel.textContent = t;
   }
