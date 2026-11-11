@@ -5,7 +5,7 @@ export const U = {
   uTime: { value: 0 },
   uPlayer: { value: new THREE.Vector3() },
   uCam: { value: new THREE.Vector3() },
-  uOccR: { value: 2.4 },
+  uOccR: { value: 2.64 },  // see-through radius around the hero (+10%)
 };
 
 export const GLSL_NOISE = /* glsl */ `

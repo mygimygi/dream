@@ -35,6 +35,7 @@ export class UI {
         <div class="bossbar" data-k="boss" hidden><b>가시고둥왕</b><div class="bar"><i data-k="bossFill"></i></div></div>
       </div>
       <div class="prompt" data-k="prompt" hidden></div>
+      <div class="guide" data-k="guide" hidden><div class="g-arrow" data-k="gArrow"></div><div class="g-label" data-k="gLabel"></div></div>
       <div class="toast-region" data-k="region"></div>
       <div class="toast" data-k="toast"></div>
       <div class="itemget" data-k="itemget" hidden><img alt="" data-k="igImg"><div><h3 data-k="igName"></h3><p data-k="igDesc"></p></div></div>
@@ -90,6 +91,16 @@ export class UI {
   }
   hideItemGet() { this.el.itemget.hidden = true; }
   boss(frac: number | null) { this.el.boss.hidden = frac === null; if (frac !== null) (this.el.bossFill as HTMLElement).style.width = `${Math.max(0, frac) * 100}%`; }
+  guide(g: { x: number; y: number; angle: number; onScreen: boolean; label: string; dist: number } | null) {
+    const el = this.el.guide;
+    if (!g) { el.hidden = true; return; }
+    el.hidden = false;
+    el.style.transform = `translate(${g.x}px, ${g.y}px)`;
+    el.classList.toggle('on', g.onScreen);
+    (this.el.gArrow as HTMLElement).style.transform = g.onScreen ? '' : `rotate(${g.angle}rad)`;
+    const t = `${g.label} · ${g.dist}m`;
+    if (this.el.gLabel.textContent !== t) this.el.gLabel.textContent = t;
+  }
   fade(on: boolean) { this.el.fade.classList.toggle('on', on); }
   fps(t: string) { this.el.fps.textContent = t; }
 

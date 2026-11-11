@@ -44,6 +44,7 @@ export class Game {
   private lantern: THREE.PointLight; private interactTarget: { label: string; act: () => void } | null = null;
   private boss: Enemy | null = null; private altarPearl: THREE.Object3D | null = null; private beam: THREE.Mesh | null = null;
   private respawnTimers: { type: EnemyType; x: number; z: number; t: number }[] = [];
+  private guideMesh: THREE.Mesh;
   private dayT = 0.32; private fsKeyHeld = false;
 
   constructor(canvas: HTMLCanvasElement) {
@@ -63,6 +64,11 @@ export class Game {
     this.player = new Player(this.scene, {
       groundAt: (x, z, m) => this.groundAt(x, z, m), terrainAt: (x, z) => this.world.hf.height(x, z), col: this.world.col, dungeon: () => this.area === 'dungeon',
     }, this.input, this.rig, this.inv);
+    // floating guide beacon (downward arrow) shown above the current objective
+    const gShape = new THREE.Shape(); gShape.moveTo(0, -0.7); gShape.lineTo(0.6, 0); gShape.lineTo(0.25, 0); gShape.lineTo(0.25, 0.6); gShape.lineTo(-0.25, 0.6); gShape.lineTo(-0.25, 0); gShape.lineTo(-0.6, 0); gShape.closePath();
+    const gGeo = new THREE.ExtrudeGeometry(gShape, { depth: 0.22, bevelEnabled: true, bevelSize: 0.06, bevelThickness: 0.06, bevelSegments: 2 }); gGeo.center();
+    this.guideMesh = new THREE.Mesh(gGeo, new THREE.MeshStandardMaterial({ color: 0xff8a5a, emissive: 0xff6a30, emissiveIntensity: 1.4, roughness: 0.4 }));
+    this.guideMesh.visible = false; this.scene.add(this.guideMesh);
     this.lantern = new THREE.PointLight(0x9fe8ff, 0, 13, 1.4); this.scene.add(this.lantern);
     this.minimap = new Minimap(this.world.hf);
     this.ui.minimapCanvas(this.minimap.canvas);
@@ -698,6 +704,7 @@ export class Game {
     // HUD
     ui.hearts(P.hp, P.maxHp); ui.shells(this.inv.count('shell'));
     this.updateRegion();
+    this.updateGuide();
     this.minimap.draw(P.pos.x, P.pos.z, P.yaw, this.rig.yaw, this.area === 'dungeon', this.dungeon.roomAt(P.pos.x, P.pos.z));
     if (P.hp <= 2 && P.hp > 0 && Math.floor(this.time * 1.2) !== Math.floor((this.time - dtRaw) * 1.2)) this.audio.play('lowHp');
   }
@@ -740,8 +747,56 @@ export class Game {
     const m = this.minimap.markers; m.length = 0;
     for (const n of L.NPCS) m.push({ x: n.x, z: n.z, color: '#ffffff', kind: 'npc' });
     for (const c of this.chests.values()) if (!c.opened && !c.def.dungeon) m.push({ x: c.def.x, z: c.def.z, color: '#f2c14c', kind: 'chest' });
-    const s = this.quest.stage();
-    const goal = s === 0 ? { x: -9, z: 17 } : s === 1 ? { x: 17.5, z: 17 } : s === 2 ? { x: 56, z: 54 } : s === 3 || s === 4 ? { x: L.CAVE.x, z: L.CAVE.z } : s === 5 ? L.TEMPLE_POS : null;
+    const goal = this.goal('island');
     if (goal) m.push({ x: goal.x, z: goal.z, color: '#f07a50', kind: 'goal' });
+  }
+  /** Where the current objective physically is (for the on-screen guide arrow and minimap star). */
+  goal(area: 'island' | 'dungeon' = this.area): { x: number; z: number; y: number; label: string } | null {
+    const s = this.quest.stage();
+    const at = (x: number, z: number, label: string, y?: number) => ({ x, z, label, y: y ?? (x > 500 ? 0 : this.world.hf.height(x, z)) });
+    if (area === 'dungeon') {
+      const D = this.dungeon;
+      if (s >= 5 || this.quest.has('bossDead')) { const k = this.pickups.find((p) => p.big); return k ? at(k.pos.x, k.pos.z, '보상') : at(DX, 8.5, '출구'); }
+      if (!D.gateA.open) { const i = D.torchesA.torches.findIndex((t) => !t.lit); const t = D.torchesA.torches[i]; return at(t.position.x, t.position.z, '횃불'); }
+      if (!D.gateB.open) { const pl = D.plateB; return Math.hypot(this.player.pos.x - DX, this.player.pos.z + 20) < 10 ? at(pl.x, pl.z, '돌을 발판 위로') : at(DX, -20, '다음 방'); }
+      const key = this.chests.get('d_key')!;
+      if (!key.opened) return this.quest.has('keyChest') ? at(key.def.x, key.def.z, '열쇠 상자') : at(DX, -40, '나방 물리치기');
+      if (!D.doorC.open) return at(DX, -46.5, '잠긴 문');
+      return at(DX, -66, '보스');
+    }
+    switch (s) {
+      case 0: return at(-9, 17, '소라 할머니');
+      case 1: return at(17.5, 17, '검 상자');
+      case 2: return this.quest.has('ruinsOpen') ? at(56, 59, '등불 상자') : at(this.ruinsBlock.col.x, this.ruinsBlock.col.z, '무거운 돌');
+      case 3: case 4: return this.area === 'dungeon' ? null : at(L.CAVE.x, L.CAVE.z, '물빛 동굴');
+      case 5: return at(L.TEMPLE_POS.x, L.TEMPLE_POS.z, '달빛 사원');
+      default: return null;
+    }
+  }
+  private updateGuide() {
+    const g = this.mode === 'play' && !this.ui.dialogOpen ? this.goal() : null;
+    if (!g) { this.ui.guide(null); this.guideMesh.visible = false; return; }
+    const P = this.player.pos;
+    const dist = Math.hypot(g.x - P.x, g.z - P.z);
+    // 3D beacon over the goal
+    this.guideMesh.visible = dist > 2.5;
+    this.guideMesh.position.set(g.x, g.y + 3.4 + Math.sin(this.time * 3) * 0.25, g.z);
+    this.guideMesh.rotation.y = this.time * 2;
+    // screen-space arrow
+    const v = new THREE.Vector3(g.x, g.y + 2.2, g.z).project(this.cam);
+    const behind = v.z > 1;
+    let sx = (v.x * 0.5 + 0.5) * innerWidth, sy = (-v.y * 0.5 + 0.5) * innerHeight;
+    if (behind) { sx = innerWidth - sx; sy = innerHeight - sy; }
+    const m = 70, onScreen = !behind && sx > m && sx < innerWidth - m && sy > m && sy < innerHeight - m;
+    const cx = innerWidth / 2, cy = innerHeight / 2;
+    let ang = Math.atan2(sy - cy, sx - cx);
+    if (behind && Math.abs(sx - cx) < 1 && Math.abs(sy - cy) < 1) ang = Math.PI / 2;
+    if (!onScreen) {
+      // clamp to an inset rectangle along the direction from the centre
+      const hw = cx - m, hh = cy - m, dx = Math.cos(ang), dy = Math.sin(ang);
+      const k = Math.min(hw / Math.abs(dx || 1e-6), hh / Math.abs(dy || 1e-6));
+      sx = cx + dx * k; sy = cy + dy * k;
+    }
+    this.ui.guide({ x: sx, y: sy, angle: ang, onScreen, label: g.label, dist: Math.round(dist) });
   }
 }

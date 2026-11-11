@@ -122,3 +122,14 @@ html,body{margin:0;height:100%;overflow:hidden;background:#cfe9f6;touch-action:n
   .itemget{top:8%}
   .itemget img{width:64px;height:64px}
 }
+
+/* objective guide: arrow at the screen edge when the goal is off-screen, pin above it when visible */
+.guide{position:absolute;left:0;top:0;width:0;height:0;z-index:1}
+.g-arrow{position:absolute;left:-26px;top:-26px;width:52px;height:52px;border-radius:50%;background:var(--coral);border:3px solid var(--paper);box-shadow:0 0 0 2px var(--coral-d),0 4px 10px rgba(40,30,22,.35)}
+.g-arrow::after{content:"";position:absolute;left:50%;top:50%;margin:-11px 0 0 -6px;border-left:18px solid #fff;border-top:11px solid transparent;border-bottom:11px solid transparent}
+.guide.on .g-arrow{left:-17px;top:-48px;width:34px;height:34px;animation:gbob 1s ease-in-out infinite}
+.guide.on .g-arrow::after{margin:-4px 0 0 -9px;border-left:9px solid transparent;border-right:9px solid transparent;border-top:12px solid #fff;border-bottom:0}
+.g-label{position:absolute;left:50%;top:32px;transform:translateX(-50%);white-space:nowrap;background:rgba(74,52,36,.86);color:#fff;font-family:var(--display);font-size:14px;padding:2px 10px;border-radius:999px}
+.guide.on .g-label{top:-8px}
+@keyframes gbob{50%{transform:translateY(-6px)}}
+@media (prefers-reduced-motion:reduce){.guide.on .g-arrow{animation:none}}
