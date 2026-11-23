@@ -90,7 +90,10 @@ export class RenderSystem {
     else if (q.antialias === 'fxaa') { this.fxaa = new ShaderPass(FXAAShader); composer.addPass(this.fxaa); }
     this.composer = composer;
     // low profile: draw straight to the screen (tone mapping still applied by the renderer)
-    this.direct = q.level === 'low';
+    this.direct = (q.level === 'low' || q.level === 'minimal');
+    // PCF soft shadows sample 4x more; phones use plain PCF
+    const st = this.direct ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
+    if (this.renderer.shadowMap.type !== st) { this.renderer.shadowMap.type = st; this.renderer.shadowMap.needsUpdate = true; }
     this.renderer.toneMappingExposure = this.direct ? 1.05 : 0.98;
     this.resize();
   }

@@ -6,7 +6,7 @@ export interface SaveData {
   inventory: any; flags: string[]; chests: string[]; bushes: number[]; pots: number[]; dungeon: { torches: boolean[]; block: [number, number]; doorC: boolean; bossDead: boolean; keyChest: boolean };
   playTime: number; starShards?: number; appearance?: any; name?: string; v2?: any;
 }
-export interface Settings { quality: 'auto' | 'low' | 'medium' | 'high'; music: number; sfx: number; sens: number; shake: boolean; }
+export interface Settings { quality: 'auto' | 'minimal' | 'low' | 'medium' | 'high'; music: number; sfx: number; sens: number; shake: boolean; }
 export const DEFAULT_SETTINGS: Settings = { quality: 'auto', music: 0.6, sfx: 0.8, sens: 1, shake: true };
 export const Save = {
   /** serialise first, keep the previous save as a backup, then write: a failed write never destroys the old data */

@@ -94,7 +94,7 @@ export class Game {
     this.qLevel = urlQ ?? (this.settings.quality === 'auto' ? detectQuality() : this.settings.quality);
     const q = profile(this.qLevel);
     this.rs = new RenderSystem(canvas, this.scene, this.cam);
-    TOY.gloss = q.level === 'low' ? 0 : 1;
+    TOY.gloss = (q.level === 'low' || q.level === 'minimal') ? 0 : 1; TOY.cheap = (q.level === 'low' || q.level === 'minimal'); TOY.lambert = q.level === 'minimal';
     this.world = new World(this.scene, q, this.rs.renderer);
     this.rs.setQuality(q);
     this.input = new Input(canvas);
@@ -781,7 +781,8 @@ export class Game {
     requestAnimationFrame(() => this.loop());
     const now = performance.now();
     // cap at ~60 fps: 90/120 Hz phones otherwise burn battery rendering frames nobody needs
-    if (now - this.lastRender < 15.5) return;
+    // only throttle >80 Hz displays; 60 Hz frames jitter around 16.7 ms and must never be dropped
+    if (now - this.lastRender < 11.5) return;
     this.lastRender = now;
     let dt = Math.min(0.05, (now - this.lastFrame) / 1000);
     this.lastFrame = now;
@@ -813,7 +814,7 @@ export class Game {
     const info = this.rs.renderer.info; info.autoReset = false; info.reset();
     // low profile: refresh the shadow map at half rate (moving shadows still read smoothly)
     const sm = this.rs.renderer.shadowMap;
-    if (this.qLevel === 'low') { sm.autoUpdate = false; if ((this.shadowTick = (this.shadowTick + 1) % 2) === 0) sm.needsUpdate = true; } else sm.autoUpdate = true;
+    if (this.qLevel === 'low' || this.qLevel === 'minimal') { sm.autoUpdate = false; if ((this.shadowTick = (this.shadowTick + 1) % 2) === 0) sm.needsUpdate = true; } else sm.autoUpdate = true;
     this.rs.render();
     const tE = performance.now();
     // lightweight perf probe (also feeds the adaptive resolution controller)
@@ -833,14 +834,20 @@ export class Game {
     if (next !== this.resScale) { this.resScale = next; this.slowT = this.fastT = 0; this.rs.setRenderScale(next); }
   }
   private perfCheck(dt: number) {
-    if (this.mode !== 'play' || this.autoChecked || this.settings.quality !== 'auto') return;
+    if (this.mode !== 'play' || this.settings.quality !== 'auto' || new URLSearchParams(location.search).has('q')) return;
     this.fpsAcc.push(dt);
-    if (this.fpsAcc.length >= 150) {
-      const avg = this.fpsAcc.reduce((a, b) => a + b, 0) / this.fpsAcc.length;
-      this.fpsAcc = [];
-      const fps = 1 / avg;
-      if (fps < 32 && this.qLevel !== 'low') { this.qLevel = this.qLevel === 'high' ? 'medium' : 'low'; this.rs.setQuality(profile(this.qLevel)); this.ui.toast(`그래픽 품질을 자동으로 조정했어요 (${this.qLevel === 'medium' ? '중간' : '낮음'})`); }
-      else this.autoChecked = true;
+    if (this.fpsAcc.length < 120) return;
+    const fps = this.fpsAcc.length / this.fpsAcc.reduce((a, b) => a + b, 0);
+    this.fpsAcc = [];
+    // keep watching for the whole session; step down a tier once dynamic resolution is already at its floor
+    const order: QualityLevel[] = ['high', 'medium', 'low', 'minimal'];
+    const i = order.indexOf(this.qLevel);
+    if (fps < 28 && i < order.length - 1 && (this.resScale <= 0.65 || i < 2)) {
+      this.qLevel = order[i + 1];
+      this.rs.setQuality(profile(this.qLevel)); this.resScale = 1;
+      if (this.qLevel === 'minimal') this.world.sun.castShadow = false;
+      const name: Record<string, string> = { medium: '중간', low: '낮음', minimal: '최저' };
+      this.ui.toast(`부드럽게 플레이하도록 그래픽을 ${name[this.qLevel]}(으)로 낮췄어요`);
     }
   }
   private updateCreate(dt: number) {

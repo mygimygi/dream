@@ -45,7 +45,7 @@ export function terrainColor(hf: Heightfield, x: number, z: number, h: number, n
 
 /** Terrain is split into tiles so the camera only draws (and the sun only shadows) what is near;
  *  `step` = 2 halves the resolution on low-end devices. */
-export function buildTerrain(hf: Heightfield, opts: { step?: number; tiles?: number; castShadow?: boolean } = {}): THREE.Group {
+export function buildTerrain(hf: Heightfield, opts: { step?: number; tiles?: number; castShadow?: boolean; cheap?: boolean } = {}): THREE.Group {
   const n = hf.n;
   const pos = new Float32Array(n * n * 3), nor = new Float32Array(n * n * 3), col = new Float32Array(n * n * 3), pathA = new Float32Array(n * n);
   const H = hf.heights;
@@ -95,7 +95,11 @@ export function buildTerrain(hf: Heightfield, opts: { step?: number; tiles?: num
     tiles.push(g);
   }
 
-  const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.93, metalness: 0, envMapIntensity: 0 });
+  // phones: Lambert lighting + the cheap noise path
+  const m = opts.cheap
+    ? new THREE.MeshLambertMaterial({ vertexColors: true }) as unknown as THREE.MeshStandardMaterial
+    : new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.93, metalness: 0, envMapIntensity: 0 });
+  if (opts.cheap) m.defines = { LOWQ: '' };
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uTime = U.uTime;
     sh.vertexShader = sh.vertexShader
@@ -104,6 +108,20 @@ export function buildTerrain(hf: Heightfield, opts: { step?: number; tiles?: num
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>\nvarying float vPath; varying vec3 vWPos; varying vec3 vWN; uniform float uTime;\n${GLSL_NOISE}`)
       .replace('#include <color_fragment>', `#include <color_fragment>
+#ifdef LOWQ
+      {
+        // cheap path for phones: 3 noise samples instead of ~25
+        float steep = smoothstep(0.84, 0.62, vWN.y);
+        float n1 = vnoise(vWPos.xz*0.12), n2 = vnoise(vWPos.xz*1.3);
+        vec3 g = diffuseColor.rgb * mix(vec3(0.9,1.0,0.86), vec3(1.07,1.04,0.9), n1) * (0.94 + 0.1*n2);
+        float pm = smoothstep(0.38, 0.52, vPath + (n1 - 0.5) * 0.45);
+        vec3 dirt = mix(vec3(0.34,0.17,0.07), vec3(0.56,0.32,0.14), n1) * (0.9 + 0.12*n2);
+        g = mix(g, dirt, pm);
+        float band = smoothstep(0.35, 0.5, fract(vWPos.y*0.85 + n1*0.8));
+        vec3 r = diffuseColor.rgb * (0.82 + 0.18*band);
+        diffuseColor.rgb = mix(g, r, steep);
+      }
+#else
       {
         float steep = smoothstep(0.84, 0.62, vWN.y);
         // grass: large soft hue drift + fine mottling + tiny speckles
@@ -140,7 +158,9 @@ export function buildTerrain(hf: Heightfield, opts: { step?: number; tiles?: num
         // lip: the rounded top edge of a cliff catches light
         r *= 1.0 + 0.08*smoothstep(0.62,0.8,vWN.y);
         diffuseColor.rgb = mix(g, r, steep);
-      }`);
+      }
+#endif
+`);
   };
   const group = new THREE.Group();
   for (const g of tiles) { const mesh = new THREE.Mesh(g, m); mesh.receiveShadow = true; mesh.castShadow = opts.castShadow ?? true; group.add(mesh); }

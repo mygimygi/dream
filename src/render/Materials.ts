@@ -27,16 +27,18 @@ export interface ToyOpts {
   gloss?: number;         // clearcoat amount: the soft sheen of painted plastic toys (0..1)
 }
 /** global switch so low-end devices can drop the clearcoat layer */
-export const TOY = { gloss: 1 };
+export const TOY = { gloss: 1, cheap: false, lambert: false };
 
 export function toy(params: THREE.MeshStandardMaterialParameters, o: ToyOpts = {}): THREE.MeshStandardMaterial {
   const gloss = (o.gloss ?? 0.15) * TOY.gloss;
   // the clearcoat layer costs a second specular lobe: only pay for it when the device can afford it
-  const m = gloss > 0
+  const lam = TOY.lambert;
+  if (lam) { const p: any = { ...params }; delete p.roughness; delete p.metalness; delete p.envMapIntensity; params = p; }
+  const m = lam ? new THREE.MeshLambertMaterial({ ...(params as any) }) as unknown as THREE.MeshStandardMaterial : gloss > 0
     ? new THREE.MeshPhysicalMaterial({ roughness: 0.62, metalness: 0, clearcoat: gloss, clearcoatRoughness: 0.3, envMapIntensity: 0.45, ...params })
     : new THREE.MeshStandardMaterial({ roughness: 0.62, metalness: 0, envMapIntensity: 0.45, ...params });
   // painted-plastic look: slightly smoother base than before, rim + clearcoat give the toy highlight
-  const up = !!o.upNormal; const wind = o.wind ?? 0, occ = !!o.occlude, rim = o.rim ?? 0.18, detail = o.detail ?? 0;
+  const up = !!o.upNormal; const wind = o.wind ?? 0, occ = !!o.occlude, rim = o.rim ?? 0.18, detail = TOY.cheap ? 0 : o.detail ?? 0;
   const rimColor = new THREE.Color(o.rimColor ?? 0xfff1d6);
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uTime = U.uTime; sh.uniforms.uPlayer = U.uPlayer; sh.uniforms.uCam = U.uCam; sh.uniforms.uOccR = U.uOccR;
@@ -77,7 +79,7 @@ export function toy(params: THREE.MeshStandardMaterialParameters, o: ToyOpts = {
           outgoingLight += uRimColor * pow(fr, 3.0) * ${rim.toFixed(3)} * (0.4 + 0.6*diffuseColor.rgb); }
         #include <opaque_fragment>`);
   };
-  m.customProgramCacheKey = () => `toy_${wind}_${occ}_${rim}_${detail}_${up}_${gloss > 0}`;
+  m.customProgramCacheKey = () => `toy_${wind}_${occ}_${rim}_${detail}_${up}_${gloss > 0}_${lam}`;
   return m;
 }
 

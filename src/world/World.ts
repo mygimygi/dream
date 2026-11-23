@@ -61,17 +61,17 @@ export class World {
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(q.shadowSize, q.shadowSize);
     const sc = this.sun.shadow.camera;
-    const sr = q.level === 'low' ? 22 : 34; // smaller shadow box on low = fewer casters per shadow pass
+    const sr = q.level === 'low' || q.level === 'minimal' ? 22 : 34; // smaller shadow box on low = fewer casters per shadow pass
     sc.left = -sr; sc.right = sr; sc.top = sr; sc.bottom = -sr; sc.near = 1; sc.far = 160;
     this.sun.shadow.bias = -0.0006; this.sun.shadow.normalBias = 0.035; this.sun.shadow.radius = 4; this.sun.shadow.intensity = 0.82; // softer, never pitch-black shadows
     scene.add(this.sun); scene.add(this.sun.target);
     const fill = new THREE.DirectionalLight(0xbfd8ff, 0.45); fill.position.set(40, 30, -60); scene.add(fill);
 
-    const low = q.level === 'low';
+    const low = q.level === 'low' || q.level === 'minimal';
     this.propViewDist = low ? 95 : 160;
-    const terrain = buildTerrain(this.hf, { step: low ? 2 : 1, tiles: 8, castShadow: !low });
+    const terrain = buildTerrain(this.hf, { step: low ? 2 : 1, tiles: 8, castShadow: !low, cheap: low });
     scene.add(terrain);
-    this.water = buildWater(this.hf, this.sunDir, low ? 70 : 180);
+    this.water = buildWater(this.hf, this.sunDir, low ? 70 : 180, low);
     scene.add(this.water);
 
     const props = new THREE.Group(); props.name = 'props'; scene.add(props);
@@ -205,7 +205,7 @@ export class World {
     const potSet = new Set(this.pots.map((p) => p.obj));
     for (const o of props.children) if (!potSet.has(o as THREE.Group) && (o as any).isGroup) bakeStatic(o);
     this.veg = new Vegetation(this.hf, this.col, props, q, exclude);
-    this.cliffs = buildCliffDecor(this.hf, props, exclude, q.level === 'low');
+    this.cliffs = buildCliffDecor(this.hf, props, exclude, (q.level === 'low' || q.level === 'minimal'));
 
     // ---------- clouds ----------
     this.clouds = new THREE.Group();

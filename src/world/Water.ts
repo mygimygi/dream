@@ -4,7 +4,7 @@ import { GLSL_NOISE, U } from '../render/Materials';
 
 /** Stylised toy-diorama water: depth-tinted from the terrain height map, shoreline foam bands,
  *  shallow caustics, animated normals, Fresnel sky reflection and sparkly sun glints (bloom-friendly). */
-export function buildWater(hf: Heightfield, sunDir: THREE.Vector3, segments = 180): THREE.Mesh {
+export function buildWater(hf: Heightfield, sunDir: THREE.Vector3, segments = 180, cheap = false): THREE.Mesh {
   const n = hf.n;
   const data = new Uint8Array(n * n * 4);
   for (let i = 0; i < n * n; i++) {
@@ -50,19 +50,26 @@ export function buildWater(hf: Heightfield, sunDir: THREE.Vector3, segments = 18
         if (depth < 0.005) discard;
         // animated normal from two scrolling noise layers
         vec2 q1 = vW.xz*0.55 + vec2(uTime*0.12, uTime*0.07);
+      #ifdef LOWQ
+        // phones: analytic ripples instead of 6 noise lookups
+        vec3 N = normalize(vec3(sin(q1.x*3.0 + uTime)*0.12 + sin(q1.y*2.3 - uTime*0.7)*0.08, 1.0, cos(q1.y*3.1 + uTime*0.8)*0.12));
+      #else
         vec2 q2 = vW.xz*1.3 - vec2(uTime*0.09, -uTime*0.11);
         float e = 0.15;
         float n0 = vnoise(q1)+0.5*vnoise(q2);
         float nx = vnoise(q1+vec2(e,0.0))+0.5*vnoise(q2+vec2(e,0.0));
         float nz = vnoise(q1+vec2(0.0,e))+0.5*vnoise(q2+vec2(0.0,e));
         vec3 N = normalize(vec3((n0-nx)*1.4, 1.0, (n0-nz)*1.4));
+      #endif
         vec3 V = normalize(cameraPosition - vW);
         // colour by depth
         vec3 col = mix(uShallow, uMid, smoothstep(0.0, 1.6, depth));
         col = mix(col, uDeep, smoothstep(1.4, 5.0, depth));
         // caustics on shallow floor
+      #ifndef LOWQ
         float c = vnoise(vW.xz*1.8 + vec2(uTime*0.3, uTime*0.2)) * vnoise(vW.xz*2.3 - vec2(uTime*0.25, 0.0));
         col += vec3(0.9,1.0,0.95) * smoothstep(0.32, 0.6, c) * 0.35 * (1.0 - smoothstep(0.2, 1.8, depth));
+      #endif
         // lighting
         float diff = 0.75 + 0.25*max(dot(N, uSun), 0.0);
         col *= diff;
@@ -70,10 +77,18 @@ export function buildWater(hf: Heightfield, sunDir: THREE.Vector3, segments = 18
         col = mix(col, uSky, fres*0.55);
         vec3 H = normalize(uSun + V);
         float spec = pow(max(dot(N, H), 0.0), 180.0);
+      #ifdef LOWQ
+        float glint = 0.0;
+      #else
         float glint = step(0.72, vnoise(vW.xz*3.5 + uTime*0.6)) * pow(max(dot(N,H),0.0), 40.0);
+      #endif
         col += uSunCol * (spec*1.6 + glint*1.4);
         // shoreline foam: a solid lip plus travelling bands
+      #ifdef LOWQ
+        float wob = sin(vW.x*0.9 + vW.z*0.7 + uTime)*0.06;
+      #else
         float wob = vnoise(vW.xz*0.9 + uTime*0.2)*0.12;
+      #endif
         float lip = smoothstep(0.16 + wob, 0.03, depth);
         float band = smoothstep(0.85, 1.0, sin(depth*9.0 - uTime*1.6 + wob*20.0)) * smoothstep(0.75, 0.15, depth);
         float foam = max(lip, band*0.75);
@@ -86,6 +101,7 @@ export function buildWater(hf: Heightfield, sunDir: THREE.Vector3, segments = 18
         #include <fog_fragment>
       }`,
   });
+  if (cheap) mat.defines = { LOWQ: '' };
   const m = new THREE.Mesh(geo, mat);
   m.position.y = 0;
   m.renderOrder = 2;

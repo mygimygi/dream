@@ -222,7 +222,7 @@ export class UI {
   }
   settings(s: Settings) {
     this.panel('settings', `<h2>설정 <button class="btn x" data-m="back">뒤로</button></h2>
-      <div class="row"><label for="s-q">그래픽 품질</label><select id="s-q"><option value="auto">자동</option><option value="low">낮음</option><option value="medium">중간</option><option value="high">높음</option></select></div>
+      <div class="row"><label for="s-q">그래픽 품질</label><select id="s-q"><option value="auto">자동</option><option value="minimal">최저 (저사양)</option><option value="low">낮음</option><option value="medium">중간</option><option value="high">높음</option></select></div>
       <div class="row"><label for="s-m">음악</label><input id="s-m" type="range" min="0" max="1" step="0.05"></div>
       <div class="row"><label for="s-s">효과음</label><input id="s-s" type="range" min="0" max="1" step="0.05"></div>
       <div class="row"><label for="s-c">카메라 감도</label><input id="s-c" type="range" min="0.3" max="2" step="0.1"></div>

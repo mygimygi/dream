@@ -38,7 +38,7 @@ export class Vegetation {
 
   constructor(public hf: Heightfield, public col: CollisionWorld, public parent: THREE.Object3D, public q: QualityProfile, public exclude: Zone[]) {
     const sp = new Spacing();
-    const low = q.level === 'low';
+    const low = (q.level === 'low' || q.level === 'minimal');
     const lowOf = <T,>(build: () => T): T => { const keep = GEO.maxDetail; GEO.maxDetail = 1; try { return build(); } finally { GEO.maxDetail = keep; } };
     // on low-end devices even the near meshes use a medium detail
     if (low) GEO.maxDetail = 2;
@@ -184,7 +184,7 @@ export class Vegetation {
       gInst[Math.floor(rnd() * 3)].push({ m: mat4(x, h - 0.04, z, rnd() * 6.28, s, s * (0.8 + rnd() * 0.5)), c });
       placed++;
     }
-    tufts.forEach((g, v) => this.lod.push(new ChunkedInstances(g, this.grassMat, gInst[v], parent, { cast: false, chunk: 24, maxDist: q.level === 'low' ? 45 : 65 })));
+    tufts.forEach((g, v) => this.lod.push(new ChunkedInstances(g, this.grassMat, gInst[v], parent, { cast: false, chunk: 24, maxDist: low ? (q.level === 'minimal' ? 32 : 45) : 65 })));
 
     // ---------- flowers ----------
     const flowerGeos = [flowerModel(0xffffff, 0xffd64a, 1), flowerModel(0xffd84a, 0xf08a3a, 2), flowerModel(0xf47aa0, 0xfff0a0, 3), flowerModel(0x8ab8ff, 0xffffff, 4), daisyCluster(5), bellFlower(0x9a7ae0, 6)];
